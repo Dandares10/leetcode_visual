@@ -433,6 +433,52 @@ app.post('/api/multi-solution', async (req, res) => {
 function getComparativeSolutions(query, currentBook) {
   const q = query.toLowerCase();
 
+  if (q.includes('cycle') || q.includes('runner') || q.includes('linked list') || q.includes('tortoise')) {
+    return {
+      title: "Linked List Cycle Detection & Interception",
+      category: "Pointers & Graph Invariants",
+      githubReferences: [
+        { name: "TheAlgorithms/C-Plus-Plus: floyds_cycle_detection.cpp", url: "https://github.com/TheAlgorithms/C-Plus-Plus" },
+        { name: "CP-Algorithms: Cycle Finding in Graphs", url: "https://cp-algorithms.com/" }
+      ],
+      approaches: [
+        {
+          id: "brute-set",
+          name: "Approach A: Hash Set Address Tracking",
+          timeComplexity: "O(N)",
+          spaceComplexity: "O(N) Heap",
+          mechanicalSympathy: "Allocates std::unordered_set<ListNode*> on the heap. Triggers pointer hashing, virtual page lookups, and cache line misses per node.",
+          invariantTruth: "Guarantees detection at the cost of O(N) auxiliary memory overhead.",
+          code: `bool hasCycle(ListNode* head) {
+    std::unordered_set<ListNode*> visited;
+    for (ListNode* curr = head; curr; curr = curr->next) {
+        if (visited.count(curr)) return true;
+        visited.insert(curr);
+    }
+    return false;
+}`
+        },
+        {
+          id: "floyd-runner",
+          name: "Approach B: Floyd's Two-Pointer Runner",
+          timeComplexity: "O(N)",
+          spaceComplexity: "O(1) Memory",
+          mechanicalSympathy: "Zero heap allocations. Only two CPU pointer registers (rdi/rsi). Streaming memory prefetcher traces contiguous node pointers in L1 cache.",
+          invariantTruth: "CTCI Ch. 2.2 / McDowell: Congruence K = pC - M guarantees collision inside cycle and collision at cycle entrance when reset to 1x.",
+          code: `bool hasCycle(ListNode* head) {
+    ListNode *slow = head, *fast = head;
+    while (fast && fast->next) {
+        slow = slow->next;
+        fast = fast->next->next;
+        if (slow == fast) return true;
+    }
+    return false;
+}`
+        }
+      ]
+    };
+  }
+
   if (q.includes('partition') || q.includes('lomuto') || q.includes('hoare') || q.includes('quicksort')) {
     return {
       title: "Partitioning Invariants: Lomuto vs Hoare vs 3-Way DNF",
