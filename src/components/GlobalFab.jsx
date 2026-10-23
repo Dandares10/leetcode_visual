@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, MessageSquare, Terminal, X } from 'lucide-react';
 
-export function GlobalFab() {
+export function GlobalFab({ onOpenAar }) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -30,28 +30,32 @@ export function GlobalFab() {
             <motion.button 
               onClick={() => {
                 setIsOpen(false);
-                alert('Quick Terminal: The integrated developer console will be available in the next release phase.');
+                if (onOpenAar) {
+                  onOpenAar();
+                } else {
+                  const input = document.getElementById('ai-search-input');
+                  if (input) {
+                    input.focus();
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }
+                }
+              }}
+              whileHover={{ scale: 1.05 }} 
+              className="btn-secondary" 
+              style={{ padding: '0.7rem 1.2rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '0.5rem', boxShadow: '0 5px 15px rgba(0,0,0,0.3)', background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.4), rgba(56, 189, 248, 0.4))', border: '1px solid rgba(56, 189, 248, 0.5)', color: '#fff' }}
+            >
+              <Sparkles style={{ width: '16px', height: '16px', color: '#38bdf8' }} /> Ask AAR Literature Agent
+            </motion.button>
+            <motion.button 
+              onClick={() => {
+                setIsOpen(false);
+                alert('Quick Terminal: The integrated C++ compilation console will be available in the next release.');
               }}
               whileHover={{ scale: 1.05 }} 
               className="btn-secondary" 
               style={{ padding: '0.7rem 1.2rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '0.5rem', boxShadow: '0 5px 15px rgba(0,0,0,0.3)' }}
             >
               <Terminal style={{ width: '16px', height: '16px' }} /> Quick Terminal
-            </motion.button>
-            <motion.button 
-              onClick={() => {
-                setIsOpen(false);
-                const input = document.getElementById('ai-search-input');
-                if (input) {
-                  input.focus();
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }
-              }}
-              whileHover={{ scale: 1.05 }} 
-              className="btn-secondary" 
-              style={{ padding: '0.7rem 1.2rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '0.5rem', boxShadow: '0 5px 15px rgba(0,0,0,0.3)' }}
-            >
-              <MessageSquare style={{ width: '16px', height: '16px' }} /> Ask AI Anything
             </motion.button>
           </motion.div>
         )}

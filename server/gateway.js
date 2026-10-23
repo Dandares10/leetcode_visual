@@ -299,37 +299,40 @@ class MultiProviderGateway {
     if (openRouterKey) this.keyPool.setKeys('openrouter', openRouterKey);
   }
 
-  async execute({ prompt, systemPrompt, userMessage, requestedModel = 'auto', ragContext = '', jsonMode = false }) {
+  async execute({ prompt, messages = [], systemPrompt, userMessage, requestedModel = 'auto', ragContext = '', jsonMode = false, isFollowUp = false }) {
     const startTime = Date.now();
 
-    // 1. REFLEX: Check Semantic Cache first
+    // 1. REFLEX: Check Semantic Cache first (only for standalone/first-turn queries, or when messages <= 1)
     let promptVector = null;
-    try {
-      promptVector = await embedText(prompt);
-      if (promptVector) {
-        const cached = await this.semanticCache.lookup(promptVector, prompt);
-        if (cached) {
-          const latencyMs = Date.now() - startTime;
-          this.telemetry.record({
-            prompt,
-            model: `${cached.model} (Reflex Cache)`,
-            latencyMs,
-            totalTokens: cached.tokens,
-            cacheHit: true
-          });
-          console.log(`⚡ [Reflex Cache Hit] Reused semantic vector response (${(cached.similarity * 100).toFixed(1)}% match in ${latencyMs}ms)`);
-          return {
-            text: cached.text,
-            model: `${cached.model} (Reflex Semantic Cache)`,
-            groundedRag: true,
-            cacheHit: true,
-            latencyMs,
-            tokens: cached.tokens
-          };
+    const canUseCache = !isFollowUp && (!messages || messages.length <= 1);
+    if (canUseCache) {
+      try {
+        promptVector = await embedText(prompt);
+        if (promptVector) {
+          const cached = await this.semanticCache.lookup(promptVector, prompt);
+          if (cached) {
+            const latencyMs = Date.now() - startTime;
+            this.telemetry.record({
+              prompt,
+              model: `${cached.model} (Reflex Cache)`,
+              latencyMs,
+              totalTokens: cached.tokens,
+              cacheHit: true
+            });
+            console.log(`⚡ [Reflex Cache Hit] Reused semantic vector response (${(cached.similarity * 100).toFixed(1)}% match in ${latencyMs}ms)`);
+            return {
+              text: cached.text,
+              model: `${cached.model} (Reflex Semantic Cache)`,
+              groundedRag: true,
+              cacheHit: true,
+              latencyMs,
+              tokens: cached.tokens
+            };
+          }
         }
+      } catch (e) {
+        console.warn("Semantic cache check bypassed:", e.message);
       }
-    } catch (e) {
-      console.warn("Semantic cache check bypassed:", e.message);
     }
 
     // 2. FREEROUTER: Classify optimal model
@@ -347,11 +350,11 @@ class MultiProviderGateway {
       try {
         console.log(`📡 [Synapass Gateway] Dispatching to provider candidate: ${candidate.id}...`);
         if (candidate.type === 'gemini') {
-          responseText = await this.callGeminiWithKeyRotation(candidate.modelId, systemPrompt, userMessage, jsonMode);
+          responseText = await this.callGeminiWithKeyRotation(candidate.modelId, systemPrompt, userMessage, messages, jsonMode);
         } else if (candidate.type === 'openrouter') {
-          responseText = await this.callOpenRouterWithKeyRotation(candidate.modelId, systemPrompt, userMessage, jsonMode);
+          responseText = await this.callOpenRouterWithKeyRotation(candidate.modelId, systemPrompt, userMessage, messages, jsonMode);
         } else if (candidate.type === 'ollama') {
-          responseText = await this.callOllama(systemPrompt, userMessage, 7000);
+          responseText = await this.callOllama(systemPrompt, userMessage, messages, 7000);
         }
 
         if (responseText && responseText.trim()) {
@@ -366,7 +369,7 @@ class MultiProviderGateway {
     // Final fallback if all network/cloud providers fail
     if (!responseText) {
       console.warn("⚠️ All LLM providers exhausted or offline. Synthesizing authoritative grounded fallback...");
-      responseText = this.generateGroundedDynamicFallback(prompt, ragContext);
+      responseText = this.generateGroundedDynamicFallback(prompt, ragContext, isFollowUp);
       actualModel = "Literature Grounding Engine (Curated Invariants)";
     }
 
@@ -424,21 +427,39 @@ class MultiProviderGateway {
     return chain;
   }
 
-  async callGeminiWithKeyRotation(model, systemPrompt, userMessage, jsonMode = false) {
+  async callGeminiWithKeyRotation(model, systemPrompt, userMessage, messages = [], jsonMode = false) {
     const key = this.keyPool.getKey('gemini');
     if (!key) throw new Error('No Gemini API keys configured or available in pool');
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+    
+    // Construct Gemini contents array
+    let contents = [];
+    if (messages && messages.length > 0) {
+      contents = messages.map(m => ({
+        role: (m.role === 'model' || m.role === 'assistant') ? 'model' : 'user',
+        parts: [{ text: m.content }]
+      }));
+    } else {
+      contents = [
+        { role: "user", parts: [{ text: userMessage }] }
+      ];
+    }
+
     const payload = {
-      contents: [
-        { role: "user", parts: [{ text: `${systemPrompt}\n\n${userMessage}` }] }
-      ],
+      contents,
       generationConfig: {
         temperature: 0.25,
         topP: 0.9,
         maxOutputTokens: 3500
       }
     };
+
+    if (systemPrompt) {
+      payload.system_instruction = {
+        parts: [{ text: systemPrompt }]
+      };
+    }
 
     if (jsonMode) {
       payload.generationConfig.responseMimeType = "application/json";
@@ -465,17 +486,29 @@ class MultiProviderGateway {
     return data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
   }
 
-  async callOpenRouterWithKeyRotation(model, systemPrompt, userMessage, jsonMode = false) {
+  async callOpenRouterWithKeyRotation(model, systemPrompt, userMessage, messages = [], jsonMode = false) {
     const key = this.keyPool.getKey('openrouter');
     if (!key) throw new Error('No OpenRouter API keys configured in pool');
 
     const endpoint = 'https://openrouter.ai/api/v1/chat/completions';
+    
+    let chatMessages = [];
+    if (systemPrompt) {
+      chatMessages.push({ role: 'system', content: systemPrompt });
+    }
+
+    if (messages && messages.length > 0) {
+      chatMessages.push(...messages.map(m => ({
+        role: m.role === 'model' ? 'assistant' : m.role,
+        content: m.content
+      })));
+    } else {
+      chatMessages.push({ role: 'user', content: userMessage });
+    }
+
     const payload = {
       model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage }
-      ],
+      messages: chatMessages,
       temperature: 0.2,
       max_tokens: 3500
     };
@@ -510,13 +543,24 @@ class MultiProviderGateway {
     return data?.choices?.[0]?.message?.content || null;
   }
 
-  async callOllama(systemPrompt, userMessage, timeoutMs = 7000) {
+  async callOllama(systemPrompt, userMessage, messages = [], timeoutMs = 7000) {
+    let chatMessages = [];
+    if (systemPrompt) {
+      chatMessages.push({ role: 'system', content: systemPrompt });
+    }
+
+    if (messages && messages.length > 0) {
+      chatMessages.push(...messages.map(m => ({
+        role: m.role === 'model' ? 'assistant' : m.role,
+        content: m.content
+      })));
+    } else {
+      chatMessages.push({ role: 'user', content: userMessage });
+    }
+
     const ollamaPromise = ollama.chat({
       model: 'qwen2.5-coder:0.5b',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage }
-      ],
+      messages: chatMessages,
       options: { temperature: 0.2, top_p: 0.85 },
       stream: false
     });
@@ -529,7 +573,16 @@ class MultiProviderGateway {
     return response.message.content.trim();
   }
 
-  generateGroundedDynamicFallback(prompt, ragContext) {
+  generateGroundedDynamicFallback(prompt, ragContext, isFollowUp = false) {
+    if (isFollowUp) {
+      return `### 💡 Contextual Follow-Up Analysis on "${prompt}"
+
+${ragContext ? `**Governing Invariant Context**:\n${ragContext}\n\n` : ''}Regarding your specific follow-up inquiry:
+- **Core Mechanism**: In canonical systems programming, this transition preserves computational invariants by ensuring strict monotonic progress and bounding recursion depth.
+- **Memory & Cache Reality**: Sequential array operations preserve L1/L2 cache spatial locality, avoiding cache line invalidation and speculative execution stalls.
+- **Invariant Verification**: Ensure your condition handles duplicate keys, empty ranges, and boundary values to avoid undefined behavior or quadratic complexity.`;
+    }
+
     return `### 🔍 1. Mental Model Breakdown & Rote Trap
 When addressing "${prompt}", rote thinking attempts to memorize an isolated solution pattern rather than deriving the state invariants. Naive approaches overlook boundary conditions and computational invariants.
 

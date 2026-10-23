@@ -3,8 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Brain } from 'lucide-react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 
-import { Header } from './components/Header';
-import { Sidebar } from './components/Sidebar';
+import { NavigationBar } from './components/NavigationBar';
+import { CppAarAgentModal } from './components/CppAarAgentModal';
 import { GlobalFab } from './components/GlobalFab';
 import { TutorWorkspace } from './pages/TutorWorkspace';
 import { Dashboard } from './pages/Dashboard';
@@ -25,6 +25,7 @@ export default function App() {
   const [selectedScenario, setSelectedScenario] = useState(SCENARIOS[0]);
   const [socraticMode, setSocraticMode] = useState(false);
   const [userXp, setUserXp] = useState(1320);
+  const [aarModalOpen, setAarModalOpen] = useState(false);
 
   // Active View Tab on Right Pane ('code' | 'simulator' | 'diff' | 'quiz')
   const [activeViewTab, setActiveViewTab] = useState('code');
@@ -153,7 +154,7 @@ export default function App() {
   };
 
   return (
-    <div style={{ height: '100vh', width: '100vw', display: 'flex', background: 'var(--bg-primary)', position: 'relative', overflow: 'hidden' }}>
+    <div style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)', position: 'relative', overflow: 'hidden' }}>
       
       {/* Bachinsky-style Intro Loading Screen */}
       <AnimatePresence>
@@ -201,7 +202,8 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <Sidebar />
+      {/* Emil Kowalski Spring-Physics Navigation Bar */}
+      <NavigationBar userXp={userXp} onOpenAar={() => setAarModalOpen(true)} />
 
       <motion.div 
         initial={{ opacity: 0 }}
@@ -209,24 +211,6 @@ export default function App() {
         transition={{ delay: 0.9, duration: 0.5, ease: "easeOut" }}
         style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
       >
-        <Header
-          scenarios={scenariosList}
-          selectedScenario={selectedScenario}
-          onSelectScenario={setSelectedScenario}
-          onCustomPromptSubmit={handleCustomPromptSubmit}
-          socraticMode={socraticMode}
-          onToggleSocratic={() => setSocraticMode(prev => !prev)}
-          onOpenMatrix={() => setMatrixOpen(true)}
-          userXp={userXp}
-          isAiThinking={isAiThinking}
-          selectedLineNum={selectedLineNum}
-          highlightedText={highlightedText}
-          onClearSelection={() => {
-            setHighlightedText("");
-            setSelectedLineNum(null);
-          }}
-        />
-
         {/* Unified Page Routing */}
         <AnimatePresence mode="wait">
           <Routes location={location} key={location.pathname}>
@@ -274,18 +258,28 @@ export default function App() {
             <Route path="/tutor" element={
               <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <TutorWorkspace 
+                  scenarios={scenariosList}
                   selectedScenario={selectedScenario}
+                  onSelectScenario={setSelectedScenario}
+                  onCustomPromptSubmit={handleCustomPromptSubmit}
                   socraticMode={socraticMode}
+                  onToggleSocratic={() => setSocraticMode(prev => !prev)}
+                  onOpenMatrix={() => setMatrixOpen(true)}
+                  userXp={userXp}
+                  isAiThinking={isAiThinking}
+                  selectedLineNum={selectedLineNum}
+                  highlightedText={highlightedText}
+                  onClearSelection={() => {
+                    setHighlightedText("");
+                    setSelectedLineNum(null);
+                  }}
                   selectedApproachIndex={selectedApproachIndex}
                   setSelectedApproachIndex={setSelectedApproachIndex}
                   handleSocraticAnswer={handleSocraticAnswer}
-                  isAiThinking={isAiThinking}
                   activeViewTab={activeViewTab}
                   setActiveViewTab={setActiveViewTab}
                   handleOpenWhyDrawer={handleOpenWhyDrawer}
-                  selectedLineNum={selectedLineNum}
                   handleCompleteQuiz={handleCompleteQuiz}
-                  setHighlightedText={setHighlightedText}
                   whyDrawerOpen={whyDrawerOpen}
                   setWhyDrawerOpen={setWhyDrawerOpen}
                   selectedAnnotation={selectedAnnotation}
@@ -318,7 +312,14 @@ export default function App() {
         </AnimatePresence>
       </motion.div>
 
-      <GlobalFab />
+      {/* Global Socratic & Literature AAR Modal */}
+      <CppAarAgentModal
+        isOpen={aarModalOpen}
+        onClose={() => setAarModalOpen(false)}
+        activeConcept={selectedScenario}
+      />
+
+      <GlobalFab onOpenAar={() => setAarModalOpen(true)} />
     </div>
   );
 }

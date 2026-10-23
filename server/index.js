@@ -274,14 +274,17 @@ function extractJsonFromText(text) {
 // (Integrates LiteLLM, Synapass, GeminiConnect, Reflex, PromptSail, Freerouter)
 // ============================================================================
 app.post('/api/aar-agent', async (req, res) => {
-  const { prompt, currentBook, activeQuestion, activeConcept, mode, model, apiKey, openRouterApiKey } = req.body;
+  const { prompt, messages, currentBook, activeQuestion, activeConcept, mode, model, apiKey, openRouterApiKey } = req.body;
 
   const rawPrompt = typeof prompt === 'string' ? prompt.trim().slice(0, 3000) : '';
   if (!rawPrompt) {
     return res.status(400).json({ error: 'A valid non-empty prompt is required.' });
   }
 
-  console.log(`\n📚 [AAR Agent] Received custom question: "${prompt.slice(0, 75)}..."`);
+  // Detect whether this is an ongoing multi-turn dialogue
+  const isFollowUp = Array.isArray(messages) && messages.length > 1;
+
+  console.log(`\n📚 [AAR Agent] Received inquiry: "${rawPrompt.slice(0, 75)}..." [Multi-turn: ${isFollowUp ? 'YES (' + messages.length + ' turns)' : 'NO'}]`);
   console.log(`📖 Context Book: "${currentBook?.title || 'General CS/C++'}" | Mode: "${mode || 'socratic-literature'}"`);
 
   // 1. Update Gateway with any client/runtime keys (GeminiConnect pooling)
@@ -290,9 +293,10 @@ app.post('/api/aar-agent', async (req, res) => {
     openRouterKey: openRouterApiKey || process.env.OPENROUTER_API_KEY
   });
 
-  // 2. Authoritative Literature Grounding as RAG context (NOT static override)
-  const canonicalTheorem = getDirectCanonicalDebrief(prompt, currentBook, activeQuestion);
-  const ragSearchQuery = `${prompt} ${activeConcept?.title || ''} ${currentBook?.title || ''} ${activeQuestion?.title || ''}`;
+  // 2. Authoritative Literature Grounding with Contextual Query Expansion
+  // Even for short follow-ups ("Why?", "Show code"), include active topic to retrieve relevant literature
+  const canonicalTheorem = getDirectCanonicalDebrief(rawPrompt, currentBook, activeQuestion);
+  const ragSearchQuery = `${activeConcept?.title || ''} ${activeQuestion?.title || ''} ${currentBook?.title || ''} ${rawPrompt}`;
   const ragVectorMatches = await queryContext(ragSearchQuery, 2);
 
   const combinedRagContext = [
@@ -300,8 +304,22 @@ app.post('/api/aar-agent', async (req, res) => {
     ragVectorMatches ? `=== VECTOR LITERATURE CONTEXT ===\n${ragVectorMatches}` : ''
   ].filter(Boolean).join('\n\n');
 
-  // 3. Fine-tuned persona system prompt calibrated for deep literature reading & anti-rote learning
-  const fineTunedSystemPrompt = `You are the Metacognitive Literature & After-Action Review (AAR) Agent.
+  // 3. Adaptive Persona System Prompt:
+  // Turn 1 / Debrief: Structured 4-phase After-Action Review breakdown
+  // Turn > 1 (Follow-up): Natural, context-preserving Socratic dialogue without repetitive template headers
+  let fineTunedSystemPrompt = '';
+
+  if (isFollowUp) {
+    fineTunedSystemPrompt = `You are the Metacognitive Socratic & Literature Tutor.
+You are in an ongoing conversation with a student studying ${currentBook?.title || 'Computer Science & Modern C++'}.
+CRITICAL INSTRUCTION FOR MULTI-TURN DIALOGUE:
+- Maintain full conversational continuity with the previous exchanges.
+- Answer the student's specific follow-up question or clarification directly and concisely.
+- DO NOT restart from scratch or output repetitive section headers (### 🔍 1. Mental Model Breakdown, etc.) unless explicitly asked.
+- Provide clean, idiomatic C++ code with explanatory comments where requested.
+- Ground the answer in the governing invariants, hardware realities, or textbook citations from ${currentBook?.title || 'Canonical Literature'}.`;
+  } else {
+    fineTunedSystemPrompt = `You are the Metacognitive Literature & After-Action Review (AAR) Agent.
 Your role: Ground computer science concepts in peer-reviewed textbooks (CTCI, CLRS, CPDS, CP3/CP4, Modern C++, OSTEP).
 Target textbook: ${currentBook?.title || 'Canonical CS Literature'}
 
@@ -317,6 +335,7 @@ Explain the low-level CPU cache, memory representation, compiler assembly, or ti
 
 ### ❓ 4. Socratic Mastery Probe
 Ask one targeted question or counter-example to test if the learner truly understands the invariant.`;
+  }
 
   const questionContextBlock = activeQuestion ? `
 === ACTIVE QUIZ QUESTION BEING REVIEWED ===
@@ -337,18 +356,22 @@ License: ${currentBook?.license || 'Open'}
 
 ${combinedRagContext ? `=== GROUNDED RAG KNOWLEDGE BASE ===\n${combinedRagContext}\n===================================\n` : ''}
 
-Learner's Specific Question:
-"${prompt}"
+Learner's Inquiry:
+"${rawPrompt}"
 
-Please generate a tailor-made, non-templated 4-phase Socratic debrief answering the exact nuances of the learner's question now.`;
+${isFollowUp 
+  ? 'Please answer this follow-up inquiry directly and concisely in light of the ongoing conversation history.' 
+  : 'Please generate a tailor-made, non-templated 4-phase Socratic debrief answering the exact nuances of the learner\'s question now.'}`;
 
   try {
     const result = await gateway.execute({
-      prompt,
+      prompt: rawPrompt,
+      messages: Array.isArray(messages) ? messages : [],
       systemPrompt: fineTunedSystemPrompt,
       userMessage,
       requestedModel: model || 'auto',
-      ragContext: combinedRagContext
+      ragContext: combinedRagContext,
+      isFollowUp
     });
 
     return res.json({

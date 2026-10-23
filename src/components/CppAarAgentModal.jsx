@@ -291,12 +291,22 @@ Test custom questions in the **[🔬 Gateway Preview & Diff]** tab to inspect ho
     if (!customPrompt) setInputText("");
     setIsThinking(true);
 
+    // Build multi-turn conversational history (excluding intro and errors)
+    const historyPayload = chatMessages
+      .filter(m => m.id !== 'aar-intro' && !m.isError)
+      .map(m => ({
+        role: m.sender === 'user' ? 'user' : 'model',
+        content: m.text
+      }));
+    historyPayload.push({ role: 'user', content: queryText });
+
     try {
       const response = await fetch('/api/aar-agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: queryText,
+          messages: historyPayload.slice(-8),
           currentBook,
           activeQuestion,
           activeConcept,
@@ -503,6 +513,19 @@ Test custom questions in the **[🔬 Gateway Preview & Diff]** tab to inspect ho
                 }}>
                   Reflex Cache Active
                 </span>
+                {(activeConcept?.title || currentBook?.title) && (
+                  <span style={{
+                    fontSize: '0.65rem',
+                    padding: '2px 7px',
+                    borderRadius: '8px',
+                    background: 'rgba(56, 189, 248, 0.15)',
+                    border: '1px solid rgba(56, 189, 248, 0.4)',
+                    color: '#38bdf8',
+                    fontWeight: 800
+                  }}>
+                    📌 {activeConcept?.title || currentBook?.title} ({chatMessages.filter(m => m.id !== 'aar-intro').length} turns)
+                  </span>
+                )}
               </div>
               <p style={{ margin: 0, fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
                 Powered by LiteLLM, Synapass, GeminiConnect, Reflex, PromptSail, and Freerouter
