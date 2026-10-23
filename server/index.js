@@ -245,6 +245,30 @@ Please analyze this and provide the metacognitive JSON output.`;
   }
 });
 
+function extractJsonFromText(text) {
+  if (!text || typeof text !== 'string') return null;
+  try {
+    return JSON.parse(text);
+  } catch (e) {}
+
+  const matchFence = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (matchFence && matchFence[1]) {
+    try {
+      return JSON.parse(matchFence[1]);
+    } catch (e) {}
+  }
+
+  const firstBrace = text.indexOf('{');
+  const lastBrace = text.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    try {
+      return JSON.parse(text.slice(firstBrace, lastBrace + 1));
+    } catch (e) {}
+  }
+
+  return null;
+}
+
 // ============================================================================
 // 🧠 DYNAMIC MULTI-PROVIDER AAR LITERATURE & SOCRATIC TUTOR AGENT
 // (Integrates LiteLLM, Synapass, GeminiConnect, Reflex, PromptSail, Freerouter)
@@ -252,8 +276,9 @@ Please analyze this and provide the metacognitive JSON output.`;
 app.post('/api/aar-agent', async (req, res) => {
   const { prompt, currentBook, activeQuestion, activeConcept, mode, model, apiKey, openRouterApiKey } = req.body;
 
-  if (!prompt) {
-    return res.status(400).json({ error: 'Prompt is required.' });
+  const rawPrompt = typeof prompt === 'string' ? prompt.trim().slice(0, 3000) : '';
+  if (!rawPrompt) {
+    return res.status(400).json({ error: 'A valid non-empty prompt is required.' });
   }
 
   console.log(`\n📚 [AAR Agent] Received custom question: "${prompt.slice(0, 75)}..."`);
@@ -345,24 +370,31 @@ Please generate a tailor-made, non-templated 4-phase Socratic debrief answering 
 // 🧩 MIXTURE-OF-SOLUTIONS (MoA) DYNAMIC & CURATED PARADIGMS
 // ============================================================================
 app.post('/api/multi-solution', async (req, res) => {
-  const { query, concept, currentBook, apiKey, openRouterApiKey } = req.body;
-  const q = (query || concept?.title || '').toLowerCase();
+  const { query, concept, currentBook, apiKey, openRouterApiKey, forceBenchmark } = req.body;
+  const rawQuery = (typeof query === 'string' ? query : concept?.title || '').trim().slice(0, 500);
+  const q = rawQuery.toLowerCase();
 
-  console.log(`\n🧩 [Multi-Solution MoA] Generating comparative approaches for: "${(query || concept?.title || '').slice(0, 50)}..."`);
+  console.log(`\n🧩 [Multi-Solution MoA] Generating comparative approaches for: "${rawQuery.slice(0, 50)}..."`);
 
-  // 1. If query matches a curated benchmark, return instant canonical data
-  const curated = getComparativeSolutions(q, currentBook);
-  if (curated) {
-    return res.json(curated);
+  // Instant curated benchmark if explicitly requested
+  if (forceBenchmark) {
+    const curated = getComparativeSolutions(q, currentBook);
+    if (curated) return res.json(curated);
   }
 
-  // 2. Otherwise, dynamically generate 4 paradigms via Multi-Provider Gateway!
+  // Retrieve curated invariant as RAG context to ground dynamic LLM synthesis
+  const curatedInvariants = getComparativeSolutions(q, currentBook);
+  const ragSnippet = curatedInvariants 
+    ? `Canonical Invariants for Reference:\n${JSON.stringify(curatedInvariants.approaches.map(a => ({ name: a.name, invariant: a.invariantTruth })), null, 2)}`
+    : '';
+
   gateway.setClientKeys({
     geminiKey: apiKey || process.env.GEMINI_API_KEY,
     openRouterKey: openRouterApiKey || process.env.OPENROUTER_API_KEY
   });
 
-  const prompt = `Analyze this algorithmic problem: "${query || concept?.title}".
+  const prompt = `Analyze this algorithmic problem: "${rawQuery}".
+${ragSnippet ? `Ground truth literature reference:\n${ragSnippet}\n` : ''}
 Generate a comparative multi-solution analysis with 3 to 4 distinct algorithmic paradigms (e.g. Brute Force, Hash Map / Frequency Array, Two-Pointer / Sliding Window, and Hardware/Bitmask).
 Format strictly as JSON with this schema:
 {
@@ -384,18 +416,22 @@ Format strictly as JSON with this schema:
 
   try {
     const result = await gateway.execute({
-      prompt: query || concept?.title,
-      systemPrompt: "You are a Senior Systems & Algorithms Engineer. Output strictly valid JSON matching the requested schema.",
+      prompt: rawQuery,
+      systemPrompt: "You are a Senior Systems & Algorithms Engineer. Output strictly valid JSON matching the requested schema without markdown backticks or extra commentary.",
       userMessage: prompt,
-      requestedModel: 'gemini-1.5-pro',
+      requestedModel: 'auto',
       jsonMode: true
     });
 
-    const parsed = JSON.parse(result.text);
-    return res.json(parsed);
+    const parsed = extractJsonFromText(result.text);
+    if (parsed && Array.isArray(parsed.approaches) && parsed.approaches.length > 0) {
+      return res.json(parsed);
+    }
+    
+    return res.json(curatedInvariants || getDefaultSolutions(rawQuery));
   } catch (err) {
     console.warn("Dynamic multi-solution fallback to default complement search:", err.message);
-    return res.json(getDefaultSolutions(query || concept?.title));
+    return res.json(curatedInvariants || getDefaultSolutions(rawQuery));
   }
 });
 
@@ -405,8 +441,9 @@ Format strictly as JSON with this schema:
 app.post('/api/gateway/preview', async (req, res) => {
   const { prompt, currentBook, activeQuestion, model, apiKey, openRouterApiKey } = req.body;
 
-  if (!prompt) {
-    return res.status(400).json({ error: 'Prompt is required.' });
+  const rawPrompt = typeof prompt === 'string' ? prompt.trim().slice(0, 3000) : '';
+  if (!rawPrompt) {
+    return res.status(400).json({ error: 'A valid non-empty prompt is required.' });
   }
 
   gateway.setClientKeys({

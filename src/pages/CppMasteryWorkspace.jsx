@@ -129,7 +129,7 @@ export function CppMasteryWorkspace({ userXp, onGainXp }) {
 
       {/* VIEW 1: ANTI-ROTE QUIZ GENERATOR */}
       {activeTab === 'quiz' && (
-        <div style={{ flex: 1, minHeight: 0, height: '100%', display: 'grid', gridTemplateColumns: '320px 1fr', gap: '1.5rem', overflow: 'hidden' }}>
+        <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '320px 1fr', gap: '1.5rem', overflow: 'hidden' }}>
           
           {/* Concept Filter Sidebar */}
           <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem', overflowY: 'auto', paddingRight: '0.5rem', overscrollBehavior: 'contain' }}>
@@ -367,7 +367,7 @@ export function CppMasteryWorkspace({ userXp, onGainXp }) {
 
       {/* VIEW 2: OPEN BOOK SHELF */}
       {activeTab === 'books' && (
-        <div style={{ flex: 1, minHeight: 0, height: '100%', display: 'flex', flexDirection: 'column', gap: '1.5rem', overflowY: 'auto', paddingRight: '0.5rem', overscrollBehavior: 'contain' }}>
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '1.5rem', overflowY: 'auto', paddingRight: '0.5rem', overscrollBehavior: 'contain' }}>
           
           {/* Book Categories Filter */}
           <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
@@ -504,7 +504,7 @@ export function CppMasteryWorkspace({ userXp, onGainXp }) {
 
       {/* VIEW 3: CORE CONCEPTS & ANTI-PATTERNS DIFF */}
       {activeTab === 'concepts' && (
-        <div style={{ flex: 1, minHeight: 0, height: '100%', display: 'flex', flexDirection: 'column', gap: '2rem', overflowY: 'auto', paddingRight: '0.5rem', overscrollBehavior: 'contain' }}>
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '2rem', overflowY: 'auto', paddingRight: '0.5rem', overscrollBehavior: 'contain' }}>
           {CPP_CONCEPTS.map(concept => (
             <div key={concept.id} className="glass-panel" style={{ padding: '2rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>

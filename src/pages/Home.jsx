@@ -10,7 +10,6 @@ export default function Home() {
     <div className="custom-scroll" style={{
       flex: 1,
       minHeight: 0,
-      height: '100%',
       overflowY: 'auto',
       overscrollBehavior: 'contain',
       padding: '2.5rem 3.5rem',
