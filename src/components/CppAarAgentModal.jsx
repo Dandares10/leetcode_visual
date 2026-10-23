@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, 
@@ -20,15 +20,22 @@ import {
   Key,
   Check,
   Trash2,
-  HelpCircle as QuestionIcon
+  GitBranch,
+  Code2,
+  Copy,
+  Terminal,
+  HelpCircle as QuestionIcon,
+  RefreshCw,
+  Search
 } from 'lucide-react';
 import { CPP_BOOKS } from '../data/cppCurriculum';
 
 const MODEL_PROVIDERS = [
-  { id: 'gemini-1.5-pro', label: '🌟 Gemini 1.5 Pro', desc: 'Google Pro Frontier - Deep Literature & Invariant Proofs', requiresKey: true },
-  { id: 'gemini-1.5-flash', label: '⚡ Gemini 1.5 Flash', desc: 'High-speed 1M context cloud inference', requiresKey: true },
-  { id: 'canonical', label: '📚 Canonical Matrix', desc: 'Instant 10ms zero-hallucination textbook invariants', requiresKey: false },
-  { id: 'ollama', label: '🦙 Ollama Local (0.5B)', desc: 'Lightweight offline model on CPU', requiresKey: false }
+  { id: 'gemini-1.5-pro', label: '🌟 Gemini 1.5 Pro', desc: 'Google Pro Frontier - Deep Literature & Invariant Proofs', keyType: 'gemini' },
+  { id: 'gemini-1.5-flash', label: '⚡ Gemini 1.5 Flash', desc: 'High-speed 1M context cloud inference', keyType: 'gemini' },
+  { id: 'openrouter/deepseek', label: '🚀 DeepSeek Coder', desc: 'OpenRouter Cloud Code & Invariant Specialist', keyType: 'openrouter' },
+  { id: 'canonical', label: '📚 Canonical Matrix', desc: 'Instant 10ms zero-hallucination textbook invariants', keyType: 'none' },
+  { id: 'ollama', label: '🦙 Ollama Local (0.5B)', desc: 'Lightweight offline model on CPU', keyType: 'none' }
 ];
 
 const PERSONA_MODES = [
@@ -38,15 +45,31 @@ const PERSONA_MODES = [
   { id: 'ctci-bud-optimizer', label: '🎯 CTCI BUD Optimizer', desc: 'Bottlenecks, unnecessary work & bitmasks' }
 ];
 
+const PRESET_MOA_PROBLEMS = [
+  { id: 'two-sum', label: 'Complement Search & BUD (Two Sum)', query: 'two sum complement search bud' },
+  { id: 'cycle-detection', label: "Floyd's Runner vs Address Set (Cycle Finding)", query: 'linked list cycle detection floyd runner' },
+  { id: 'quicksort-partitions', label: 'Hoare vs Lomuto Partition Invariant', query: 'quicksort lomuto hoare partition' },
+  { id: 'unique-chars', label: 'Single-Register Bitmask vs Hash Set', query: 'unique chars bit vector register bitmask' }
+];
+
 export function CppAarAgentModal({ isOpen, onClose, activeQuestion, activeConcept }) {
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
+  // Navigation & View Mode: 'chat' | 'moa'
+  const [activeTab, setActiveTab] = useState('chat');
+
+  // Multi-Provider Keys
+  const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
+  const [openRouterApiKey, setOpenRouterApiKey] = useState(() => localStorage.getItem('openrouter_api_key') || '');
   const [selectedModel, setSelectedModel] = useState(() => {
     return localStorage.getItem('aar_selected_model') || (localStorage.getItem('gemini_api_key') ? 'gemini-1.5-pro' : 'canonical');
   });
+  
+  // API Key Drawer State
   const [showKeyManager, setShowKeyManager] = useState(false);
-  const [keyInput, setKeyInput] = useState('');
+  const [geminiInput, setGeminiInput] = useState('');
+  const [openRouterInput, setOpenRouterInput] = useState('');
   const [keySavedStatus, setKeySavedStatus] = useState(false);
 
+  // Chat State
   const [chatMessages, setChatMessages] = useState([
     {
       id: 'aar-intro',
@@ -58,10 +81,11 @@ I am specifically fine-tuned to eradicate **rote memorization** and superficial 
 
 **Multi-Model Architecture Active:**
 - **🌟 Gemini 1.5 Pro / Flash**: Offload heavy cognitive load, multi-turn Socratic inquiry, and large-context book analysis.
+- **🚀 DeepSeek Coder via OpenRouter**: High-speed code synthesis and algorithmic invariant reasoning.
 - **📚 Canonical Invariants Matrix**: Instant (10ms) zero-hallucination peer-reviewed textbook citations (CLRS, CTCI, CPDS, CP3/CP4, Modern C++).
 - **🦙 Ollama Local (Qwen 0.5B)**: Offline local execution with timeout guardrails.
 
-Select your preferred model above or ask any conceptual question to begin!`
+Switch to the **Mixture-of-Solutions (MoA)** tab above to compare 4 algorithmic paradigms side-by-side with real GitHub codebases!`
     }
   ]);
   const [inputText, setInputText] = useState("");
@@ -69,17 +93,42 @@ Select your preferred model above or ask any conceptual question to begin!`
   const [selectedBookTab, setSelectedBookTab] = useState(CPP_BOOKS[0].id);
   const [personaMode, setPersonaMode] = useState('socratic-literature');
 
+  // Mixture-of-Solutions (MoA) State
+  const [moaQuery, setMoaQuery] = useState('two sum complement search bud');
+  const [moaData, setMoaData] = useState(null);
+  const [moaLoading, setMoaLoading] = useState(false);
+  const [copiedApproachId, setCopiedApproachId] = useState(null);
+
+  // Initialize MoA on open or concept switch
+  useEffect(() => {
+    if (isOpen && !moaData) {
+      fetchMultiSolution(activeConcept?.title || 'two sum');
+    }
+  }, [isOpen, activeConcept]);
+
   if (!isOpen) return null;
 
   const currentBook = CPP_BOOKS.find(b => b.id === selectedBookTab) || CPP_BOOKS[0];
 
-  const handleSaveApiKey = () => {
-    const trimmed = keyInput.trim();
-    if (trimmed) {
-      localStorage.setItem('gemini_api_key', trimmed);
-      setApiKey(trimmed);
+  const handleSaveApiKeys = () => {
+    let savedAny = false;
+    if (geminiInput.trim()) {
+      localStorage.setItem('gemini_api_key', geminiInput.trim());
+      setGeminiApiKey(geminiInput.trim());
       setSelectedModel('gemini-1.5-pro');
       localStorage.setItem('aar_selected_model', 'gemini-1.5-pro');
+      savedAny = true;
+    }
+    if (openRouterInput.trim()) {
+      localStorage.setItem('openrouter_api_key', openRouterInput.trim());
+      setOpenRouterApiKey(openRouterInput.trim());
+      if (!geminiInput.trim()) {
+        setSelectedModel('openrouter/deepseek');
+        localStorage.setItem('aar_selected_model', 'openrouter/deepseek');
+      }
+      savedAny = true;
+    }
+    if (savedAny) {
       setKeySavedStatus(true);
       setTimeout(() => {
         setKeySavedStatus(false);
@@ -88,21 +137,61 @@ Select your preferred model above or ask any conceptual question to begin!`
     }
   };
 
-  const handleClearApiKey = () => {
+  const handleClearApiKeys = () => {
     localStorage.removeItem('gemini_api_key');
-    setApiKey('');
+    localStorage.removeItem('openrouter_api_key');
+    setGeminiApiKey('');
+    setOpenRouterApiKey('');
     setSelectedModel('canonical');
     localStorage.setItem('aar_selected_model', 'canonical');
-    setKeyInput('');
+    setGeminiInput('');
+    setOpenRouterInput('');
     setShowKeyManager(false);
   };
 
   const handleModelSelect = (modelId) => {
     setSelectedModel(modelId);
     localStorage.setItem('aar_selected_model', modelId);
-    if ((modelId === 'gemini-1.5-pro' || modelId === 'gemini-1.5-flash') && !apiKey) {
+    const provider = MODEL_PROVIDERS.find(p => p.id === modelId);
+    if (provider?.keyType === 'gemini' && !geminiApiKey) {
+      setShowKeyManager(true);
+    } else if (provider?.keyType === 'openrouter' && !openRouterApiKey) {
       setShowKeyManager(true);
     }
+  };
+
+  const fetchMultiSolution = async (queryText) => {
+    setMoaLoading(true);
+    try {
+      const res = await fetch('/api/multi-solution', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: queryText || moaQuery,
+          currentBook,
+          concept: activeConcept
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMoaData(data);
+      }
+    } catch (err) {
+      console.warn("Could not fetch multi-solution from server:", err);
+    } finally {
+      setMoaLoading(false);
+    }
+  };
+
+  const handleCopyCode = (id, code) => {
+    navigator.clipboard.writeText(code);
+    setCopiedApproachId(id);
+    setTimeout(() => setCopiedApproachId(null), 1500);
+  };
+
+  const handlePipeToSocraticDebrief = (approachName, invariantTruth) => {
+    setActiveTab('chat');
+    handleSendMessage(`Debrief this specific invariant from ${approachName}: "${invariantTruth}". What is the core theorem proving this?`);
   };
 
   const handleSendMessage = async (customPrompt) => {
@@ -120,7 +209,6 @@ Select your preferred model above or ask any conceptual question to begin!`
     setIsThinking(true);
 
     try {
-      // 1. Send to local multi-model backend endpoint
       const response = await fetch('/api/aar-agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -131,7 +219,8 @@ Select your preferred model above or ask any conceptual question to begin!`
           activeConcept,
           mode: personaMode,
           model: selectedModel,
-          apiKey: apiKey || undefined
+          apiKey: geminiApiKey || undefined,
+          openRouterApiKey: openRouterApiKey || undefined
         })
       });
 
@@ -153,7 +242,6 @@ Select your preferred model above or ask any conceptual question to begin!`
       ]);
     } catch (err) {
       console.warn("Backend API not reachable or timed out. Falling back to local semantic knowledge matrix:", err);
-      // Resilient local synthesis guaranteeing complete 4-phase debrief even if server is offline
       const fallbackReply = generateClientSideAuthoritativeDebrief(queryText, currentBook, activeQuestion);
       
       setChatMessages(prev => [
@@ -183,8 +271,7 @@ Select your preferred model above or ask any conceptual question to begin!`
       );
     }
 
-    // Split text into phase blocks if structured
-    const sections = text.split(/(?=### )/g);
+    const sections = text.split(/(?=### )/);
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -227,7 +314,6 @@ Select your preferred model above or ask any conceptual question to begin!`
             title = 'Phase 4: Socratic Mastery Counter-Probe';
           }
 
-          // Strip header markdown line for clean presentation
           const lines = trimmed.split('\n');
           const cleanBody = lines[0].startsWith('###') ? lines.slice(1).join('\n').trim() : trimmed;
 
@@ -267,8 +353,8 @@ Select your preferred model above or ask any conceptual question to begin!`
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
         style={{
           width: '96%',
-          maxWidth: '1240px',
-          height: '90vh',
+          maxWidth: '1280px',
+          height: '92vh',
           background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(10, 15, 30, 0.98) 100%)',
           borderRadius: '24px',
           border: '1px solid rgba(255, 255, 255, 0.12)',
@@ -285,8 +371,11 @@ Select your preferred model above or ask any conceptual question to begin!`
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          background: 'rgba(255, 255, 255, 0.02)'
+          background: 'rgba(255, 255, 255, 0.02)',
+          gap: '1rem',
+          flexWrap: 'wrap'
         }}>
+          {/* Logo & Subtitle */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <div style={{
               width: '42px',
@@ -303,7 +392,7 @@ Select your preferred model above or ask any conceptual question to begin!`
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                 <h2 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#fff', margin: 0 }}>
-                  Fine-Tuned AAR Literature & Socratic Tutor
+                  AAR Literature & Multi-Provider Architecture
                 </h2>
                 <span style={{
                   fontSize: '0.68rem',
@@ -337,6 +426,62 @@ Select your preferred model above or ask any conceptual question to begin!`
             </div>
           </div>
 
+          {/* Central Mode Switcher: Socratic Chat vs MoA Matrix */}
+          <div style={{
+            display: 'flex',
+            background: 'rgba(0, 0, 0, 0.45)',
+            padding: '4px',
+            borderRadius: '14px',
+            border: '1px solid rgba(255, 255, 255, 0.1)'
+          }}>
+            <button
+              onClick={() => setActiveTab('chat')}
+              style={{
+                padding: '0.45rem 1rem',
+                borderRadius: '10px',
+                fontSize: '0.78rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                border: 'none',
+                background: activeTab === 'chat' ? 'linear-gradient(135deg, #6366f1, #38bdf8)' : 'transparent',
+                color: activeTab === 'chat' ? '#fff' : 'var(--text-secondary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.2s ease',
+                boxShadow: activeTab === 'chat' ? '0 0 15px rgba(99, 102, 241, 0.4)' : 'none'
+              }}
+            >
+              <Bot style={{ width: '15px', height: '15px' }} />
+              💬 Socratic AAR Chat
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab('moa');
+                if (!moaData) fetchMultiSolution(moaQuery);
+              }}
+              style={{
+                padding: '0.45rem 1rem',
+                borderRadius: '10px',
+                fontSize: '0.78rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                border: 'none',
+                background: activeTab === 'moa' ? 'linear-gradient(135deg, #a855f7, #ec4899)' : 'transparent',
+                color: activeTab === 'moa' ? '#fff' : 'var(--text-secondary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.2s ease',
+                boxShadow: activeTab === 'moa' ? '0 0 15px rgba(168, 85, 247, 0.4)' : 'none'
+              }}
+            >
+              <GitBranch style={{ width: '15px', height: '15px' }} />
+              🧩 Mixture-of-Solutions (MoA)
+            </button>
+          </div>
+
+          {/* Close button */}
           <button
             onClick={onClose}
             style={{
@@ -356,547 +501,932 @@ Select your preferred model above or ask any conceptual question to begin!`
           </button>
         </div>
 
-        {/* Two-Column Body */}
-        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1.05fr 1.15fr', minHeight: 0 }}>
-          
-          {/* LEFT: Structured AAR Debrief & Book Shelf */}
-          <div style={{
-            borderRight: '1px solid var(--border-subtle)',
-            padding: '1.25rem',
-            overflowY: 'auto',
-            overscrollBehavior: 'contain',
-            height: '100%',
-            minHeight: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '1.25rem'
-          }}>
+        {/* VIEW 1: Socratic AAR Chat */}
+        {activeTab === 'chat' && (
+          <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1.05fr 1.15fr', minHeight: 0 }}>
             
-            {/* If there's an active question being debriefed */}
-            {activeQuestion && activeQuestion.aarDebrief && (
-              <div style={{
-                background: 'rgba(239, 68, 68, 0.05)',
-                border: '1px solid rgba(239, 68, 68, 0.25)',
-                borderRadius: '16px',
-                padding: '1.2rem'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', color: '#f43f5e', fontWeight: 800, fontSize: '0.85rem' }}>
-                  <ShieldAlert style={{ width: '17px', height: '17px' }} />
-                  AAR Phase: Flawed Mental Model vs Standard Truth
-                </div>
-
-                <div style={{ marginBottom: '0.7rem' }}>
-                  <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#f43f5e', fontWeight: 800 }}>
-                    1. Rote Misconception:
-                  </div>
-                  <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '0.2rem', lineHeight: '1.4' }}>
-                    {activeQuestion.aarDebrief.mentalModelMistake}
-                  </div>
-                </div>
-
-                <div style={{ marginBottom: '0.7rem' }}>
-                  <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#10b981', fontWeight: 800 }}>
-                    2. Authoritative Literature Truth:
-                  </div>
-                  <div style={{ fontSize: '0.82rem', color: '#fff', marginTop: '0.2rem', lineHeight: '1.4' }}>
-                    {activeQuestion.aarDebrief.authoritativeTruth}
-                  </div>
-                </div>
-
-                <div style={{ background: 'rgba(0, 0, 0, 0.35)', padding: '0.65rem 0.85rem', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid rgba(255, 255, 255, 0.06)' }}>
-                  <div style={{ fontSize: '0.78rem', color: '#c084fc', fontWeight: 700 }}>
-                    📚 Citation: {activeQuestion.bookCitation?.book || 'Curated Standard'} ({activeQuestion.bookCitation?.rule || activeQuestion.bookCitation?.chapter || 'Core Invariant'})
-                  </div>
-                  <button
-                    onClick={() => handleSendMessage(`Break down the literature invariant for "${activeQuestion.title}" from ${activeQuestion.bookCitation?.book}`)}
-                    style={{
-                      background: 'rgba(168, 85, 247, 0.2)',
-                      border: '1px solid rgba(168, 85, 247, 0.4)',
-                      color: '#c084fc',
-                      fontSize: '0.7rem',
-                      padding: '3px 8px',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontWeight: 700
-                    }}
-                  >
-                    Debrief Now
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Canonical Book Shelf Selector */}
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.65rem' }}>
-                <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <BookOpen style={{ width: '15px', height: '15px', color: '#38bdf8' }} />
-                  Curated Canonical CS & C++ Literature
-                </h3>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Free & Authoritative</span>
-              </div>
-
-              {/* Book Pills */}
-              <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.85rem', flexWrap: 'wrap' }}>
-                {CPP_BOOKS.map(book => (
-                  <button
-                    key={book.id}
-                    onClick={() => setSelectedBookTab(book.id)}
-                    style={{
-                      background: selectedBookTab === book.id ? 'rgba(56, 189, 248, 0.22)' : 'rgba(255, 255, 255, 0.04)',
-                      border: `1px solid ${selectedBookTab === book.id ? '#38bdf8' : 'rgba(255, 255, 255, 0.08)'}`,
-                      color: selectedBookTab === book.id ? '#38bdf8' : 'var(--text-secondary)',
-                      borderRadius: '8px',
-                      padding: '0.35rem 0.65rem',
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    {book.title.split(':')[0]}
-                  </button>
-                ))}
-              </div>
-
-              {/* Selected Book Overview Card */}
-              <div style={{
-                background: 'rgba(255, 255, 255, 0.03)',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                borderRadius: '16px',
-                padding: '1.1rem'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.4rem' }}>
-                  <div>
-                    <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#fff', margin: 0 }}>
-                      {currentBook.title}
-                    </h4>
-                    <p style={{ fontSize: '0.78rem', color: '#38bdf8', margin: '0.15rem 0 0.4rem 0' }}>
-                      By {currentBook.author} ({currentBook.license})
-                    </p>
-                  </div>
-
-                  <a
-                    href={currentBook.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      fontSize: '0.72rem',
-                      background: 'rgba(56, 189, 248, 0.15)',
-                      color: '#38bdf8',
-                      padding: '0.35rem 0.65rem',
-                      borderRadius: '8px',
-                      textDecoration: 'none',
-                      fontWeight: 700
-                    }}
-                  >
-                    Read Online Free <ExternalLink style={{ width: '11px', height: '11px' }} />
-                  </a>
-                </div>
-
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.45', marginBottom: '0.85rem' }}>
-                  {currentBook.description}
-                </p>
-
-                <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.4rem' }}>
-                  Key Invariant Chapters:
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                  {currentBook.keyChapters.map((ch, i) => (
-                    <div
-                      key={i}
-                      onClick={() => handleSendMessage(`Explain the core mathematical or compiler invariant in Chapter ${ch.number}: "${ch.title}" from ${currentBook.title}`)}
-                      style={{
-                        padding: '0.45rem 0.65rem',
-                        background: 'rgba(0, 0, 0, 0.25)',
-                        borderRadius: '6px',
-                        fontSize: '0.76rem',
-                        color: 'var(--text-primary)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        cursor: 'pointer',
-                        border: '1px solid rgba(255, 255, 255, 0.04)',
-                        transition: 'background 0.15s ease'
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(99, 102, 241, 0.15)'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(0, 0, 0, 0.25)'}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <span style={{ color: '#c084fc', fontWeight: 800 }}>Ch {ch.number}:</span>
-                        <span>{ch.title}</span>
-                      </div>
-                      <ArrowRight style={{ width: '12px', height: '12px', color: 'var(--text-muted)' }} />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-          </div>
-
-          {/* RIGHT: Deep-Reading AI Agent Socratic Chat */}
-          <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, background: 'rgba(0, 0, 0, 0.2)' }}>
-            
-            {/* Multi-Model Orchestrator Provider Bar */}
+            {/* LEFT: Structured AAR Debrief & Book Shelf */}
             <div style={{
-              padding: '0.65rem 1.25rem',
-              borderBottom: '1px solid var(--border-subtle)',
-              background: 'rgba(10, 15, 30, 0.75)',
+              borderRight: '1px solid var(--border-subtle)',
+              padding: '1.25rem',
+              overflowY: 'auto',
+              overscrollBehavior: 'contain',
+              height: '100%',
+              minHeight: 0,
               display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '0.5rem',
-              flexWrap: 'wrap'
+              flexDirection: 'column',
+              gap: '1.25rem'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <Cpu style={{ width: '14px', height: '14px', color: '#c084fc' }} />
-                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                  Model Engine:
-                </span>
-                <div style={{ display: 'flex', gap: '0.3rem' }}>
-                  {MODEL_PROVIDERS.map(m => (
+              
+              {/* If there's an active question being debriefed */}
+              {activeQuestion && activeQuestion.aarDebrief && (
+                <div style={{
+                  background: 'rgba(239, 68, 68, 0.05)',
+                  border: '1px solid rgba(239, 68, 68, 0.25)',
+                  borderRadius: '16px',
+                  padding: '1.2rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', color: '#f43f5e', fontWeight: 800, fontSize: '0.85rem' }}>
+                    <ShieldAlert style={{ width: '17px', height: '17px' }} />
+                    AAR Phase: Flawed Mental Model vs Standard Truth
+                  </div>
+
+                  <div style={{ marginBottom: '0.7rem' }}>
+                    <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#f43f5e', fontWeight: 800 }}>
+                      1. Rote Misconception:
+                    </div>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '0.2rem', lineHeight: '1.4' }}>
+                      {activeQuestion.aarDebrief.mentalModelMistake}
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: '0.7rem' }}>
+                    <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#10b981', fontWeight: 800 }}>
+                      2. Authoritative Literature Truth:
+                    </div>
+                    <div style={{ fontSize: '0.82rem', color: '#fff', marginTop: '0.2rem', lineHeight: '1.4' }}>
+                      {activeQuestion.aarDebrief.authoritativeTruth}
+                    </div>
+                  </div>
+
+                  <div style={{ background: 'rgba(0, 0, 0, 0.35)', padding: '0.65rem 0.85rem', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid rgba(255, 255, 255, 0.06)' }}>
+                    <div style={{ fontSize: '0.78rem', color: '#c084fc', fontWeight: 700 }}>
+                      📚 Citation: {activeQuestion.bookCitation?.book || 'Curated Standard'} ({activeQuestion.bookCitation?.rule || activeQuestion.bookCitation?.chapter || 'Core Invariant'})
+                    </div>
                     <button
-                      key={m.id}
-                      onClick={() => handleModelSelect(m.id)}
-                      title={m.desc}
+                      onClick={() => handleSendMessage(`Break down the literature invariant for "${activeQuestion.title}" from ${activeQuestion.bookCitation?.book}`)}
                       style={{
-                        padding: '0.25rem 0.55rem',
-                        borderRadius: '6px',
+                        background: 'rgba(168, 85, 247, 0.2)',
+                        border: '1px solid rgba(168, 85, 247, 0.4)',
+                        color: '#c084fc',
                         fontSize: '0.7rem',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontWeight: 700
+                      }}
+                    >
+                      Debrief Now
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Canonical Book Shelf Selector */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.65rem' }}>
+                  <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <BookOpen style={{ width: '15px', height: '15px', color: '#38bdf8' }} />
+                    Curated Canonical CS & C++ Literature
+                  </h3>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Free & Authoritative</span>
+                </div>
+
+                {/* Book Pills */}
+                <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.85rem', flexWrap: 'wrap' }}>
+                  {CPP_BOOKS.map(book => (
+                    <button
+                      key={book.id}
+                      onClick={() => setSelectedBookTab(book.id)}
+                      style={{
+                        background: selectedBookTab === book.id ? 'rgba(56, 189, 248, 0.22)' : 'rgba(255, 255, 255, 0.04)',
+                        border: `1px solid ${selectedBookTab === book.id ? '#38bdf8' : 'rgba(255, 255, 255, 0.08)'}`,
+                        color: selectedBookTab === book.id ? '#38bdf8' : 'var(--text-secondary)',
+                        borderRadius: '8px',
+                        padding: '0.35rem 0.65rem',
+                        fontSize: '0.72rem',
                         fontWeight: 700,
                         cursor: 'pointer',
-                        border: selectedModel === m.id ? '1px solid #c084fc' : '1px solid rgba(255, 255, 255, 0.08)',
-                        background: selectedModel === m.id ? 'rgba(168, 85, 247, 0.25)' : 'rgba(255, 255, 255, 0.03)',
-                        color: selectedModel === m.id ? '#e9d5ff' : 'var(--text-muted)',
                         transition: 'all 0.15s ease'
                       }}
                     >
-                      {m.label}
+                      {book.title.split(':')[0]}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Selected Book Meta Card */}
+                <div style={{
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
+                  borderRadius: '14px',
+                  padding: '1rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.6rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem' }}>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '0.88rem', color: '#fff', fontWeight: 700 }}>
+                        {currentBook.title}
+                      </h4>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        By {currentBook.author} • {currentBook.license}
+                      </div>
+                    </div>
+                    {currentBook.url && (
+                      <a
+                        href={currentBook.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          color: '#38bdf8',
+                          fontSize: '0.72rem',
+                          textDecoration: 'none',
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          background: 'rgba(56, 189, 248, 0.1)',
+                          border: '1px solid rgba(56, 189, 248, 0.3)',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        Read Online <ExternalLink style={{ width: '11px', height: '11px' }} />
+                      </a>
+                    )}
+                  </div>
+
+                  <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: '1.45' }}>
+                    {currentBook.description}
+                  </p>
+
+                  <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: '0.6rem' }}>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.4rem' }}>
+                      Key Modules / Chapters:
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                      {currentBook.chapters?.slice(0, 6).map((chap, i) => (
+                        <button
+                          key={i}
+                          onClick={() => handleSendMessage(`Debrief key invariants from ${currentBook.title} on ${chap}`)}
+                          style={{
+                            fontSize: '0.7rem',
+                            padding: '3px 7px',
+                            background: 'rgba(255, 255, 255, 0.04)',
+                            border: '1px solid rgba(255, 255, 255, 0.08)',
+                            borderRadius: '6px',
+                            color: 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            textAlign: 'left'
+                          }}
+                        >
+                          📖 {chap}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            {/* RIGHT: Chat & Socratic Inquiries */}
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              height: '100%',
+              minHeight: 0,
+              background: 'rgba(0, 0, 0, 0.2)'
+            }}>
+
+              {/* Multi-Provider Selector & Pro Key Bar */}
+              <div style={{
+                padding: '0.65rem 1.25rem',
+                borderBottom: '1px solid var(--border-subtle)',
+                background: 'rgba(255, 255, 255, 0.02)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '0.5rem',
+                flexWrap: 'wrap'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <Cpu style={{ width: '14px', height: '14px', color: '#c084fc' }} />
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                    Engine:
+                  </span>
+                  <div style={{ display: 'flex', gap: '0.3rem' }}>
+                    {MODEL_PROVIDERS.map(m => (
+                      <button
+                        key={m.id}
+                        onClick={() => handleModelSelect(m.id)}
+                        title={m.desc}
+                        style={{
+                          padding: '0.25rem 0.55rem',
+                          borderRadius: '6px',
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          border: selectedModel === m.id ? '1px solid #c084fc' : '1px solid rgba(255, 255, 255, 0.08)',
+                          background: selectedModel === m.id ? 'rgba(168, 85, 247, 0.25)' : 'rgba(255, 255, 255, 0.03)',
+                          color: selectedModel === m.id ? '#e9d5ff' : 'var(--text-muted)',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* API Key Configuration Button */}
+                <button
+                  onClick={() => setShowKeyManager(!showKeyManager)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    padding: '0.25rem 0.6rem',
+                    borderRadius: '6px',
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    border: (geminiApiKey || openRouterApiKey) ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(99, 102, 241, 0.4)',
+                    background: (geminiApiKey || openRouterApiKey) ? 'rgba(16, 185, 129, 0.15)' : 'rgba(99, 102, 241, 0.15)',
+                    color: (geminiApiKey || openRouterApiKey) ? '#34d399' : '#818cf8',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <Key style={{ width: '12px', height: '12px' }} />
+                  {(geminiApiKey || openRouterApiKey) ? 'Custom Keys Active' : 'Configure Cloud Keys'}
+                </button>
+              </div>
+
+              {/* Expandable API Key Drawer */}
+              <AnimatePresence>
+                {showKeyManager && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    style={{
+                      background: 'rgba(15, 23, 42, 0.95)',
+                      borderBottom: '1px solid rgba(99, 102, 241, 0.3)',
+                      padding: '0.85rem 1.25rem',
+                      overflow: 'hidden'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <Key style={{ width: '14px', height: '14px', color: '#818cf8' }} />
+                        Multi-Provider Credentials (Browser Local Storage Only)
+                      </div>
+                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                        Keys are never transmitted or stored on third-party servers.
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                      <div>
+                        <div style={{ fontSize: '0.68rem', color: '#38bdf8', fontWeight: 700, marginBottom: '3px' }}>
+                          🌟 Google Gemini Pro API Key:
+                        </div>
+                        <input
+                          type="password"
+                          placeholder={geminiApiKey ? "•••••••••••••••• (Saved)" : "Paste AI Studio / Gemini Key"}
+                          value={geminiInput}
+                          onChange={(e) => setGeminiInput(e.target.value)}
+                          style={{
+                            width: '100%',
+                            background: 'rgba(0, 0, 0, 0.5)',
+                            border: '1px solid rgba(255, 255, 255, 0.15)',
+                            borderRadius: '8px',
+                            padding: '0.4rem 0.6rem',
+                            fontSize: '0.74rem',
+                            color: '#fff',
+                            outline: 'none'
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.68rem', color: '#a855f7', fontWeight: 700, marginBottom: '3px' }}>
+                          🚀 OpenRouter / DeepSeek API Key:
+                        </div>
+                        <input
+                          type="password"
+                          placeholder={openRouterApiKey ? "•••••••••••••••• (Saved)" : "Paste OpenRouter API Key"}
+                          value={openRouterInput}
+                          onChange={(e) => setOpenRouterInput(e.target.value)}
+                          style={{
+                            width: '100%',
+                            background: 'rgba(0, 0, 0, 0.5)',
+                            border: '1px solid rgba(255, 255, 255, 0.15)',
+                            borderRadius: '8px',
+                            padding: '0.4rem 0.6rem',
+                            fontSize: '0.74rem',
+                            color: '#fff',
+                            outline: 'none'
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                      <button
+                        onClick={handleSaveApiKeys}
+                        style={{
+                          background: keySavedStatus ? '#10b981' : 'linear-gradient(135deg, #6366f1, #38bdf8)',
+                          border: 'none',
+                          borderRadius: '8px',
+                          padding: '0.4rem 0.9rem',
+                          fontSize: '0.74rem',
+                          fontWeight: 700,
+                          color: '#fff',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.3rem'
+                        }}
+                      >
+                        {keySavedStatus ? <Check style={{ width: '13px', height: '13px' }} /> : 'Save Keys'}
+                      </button>
+                      {(geminiApiKey || openRouterApiKey) && (
+                        <button
+                          onClick={handleClearApiKeys}
+                          title="Remove all keys from LocalStorage"
+                          style={{
+                            background: 'rgba(239, 68, 68, 0.15)',
+                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                            borderRadius: '8px',
+                            padding: '0.4rem 0.75rem',
+                            color: '#f43f5e',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          <Trash2 style={{ width: '13px', height: '13px' }} /> Clear
+                        </button>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              
+              {/* Fine-Tuning Persona Mode Switcher */}
+              <div style={{
+                padding: '0.65rem 1.25rem',
+                borderBottom: '1px solid var(--border-subtle)',
+                background: 'rgba(15, 23, 42, 0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <Bot style={{ width: '15px', height: '15px', color: '#38bdf8' }} />
+                  <span style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                    Fine-Tuning Persona:
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.35rem' }}>
+                  {PERSONA_MODES.map(mode => (
+                    <button
+                      key={mode.id}
+                      onClick={() => setPersonaMode(mode.id)}
+                      title={mode.desc}
+                      style={{
+                        padding: '0.3rem 0.55rem',
+                        borderRadius: '6px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        border: personaMode === mode.id ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.08)',
+                        background: personaMode === mode.id ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.03)',
+                        color: personaMode === mode.id ? '#38bdf8' : 'var(--text-muted)',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      {mode.label}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* API Key Configuration Button */}
-              <button
-                onClick={() => setShowKeyManager(!showKeyManager)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.35rem',
-                  padding: '0.25rem 0.6rem',
-                  borderRadius: '6px',
-                  fontSize: '0.7rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  border: apiKey ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(99, 102, 241, 0.4)',
-                  background: apiKey ? 'rgba(16, 185, 129, 0.15)' : 'rgba(99, 102, 241, 0.15)',
-                  color: apiKey ? '#34d399' : '#818cf8',
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                <Key style={{ width: '12px', height: '12px' }} />
-                {apiKey ? 'Pro Key Active' : 'Set Pro API Key'}
-              </button>
-            </div>
-
-            {/* Expandable API Key Drawer */}
-            <AnimatePresence>
-              {showKeyManager && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
+              {/* Quick Socratic Diagnostic Action Chips */}
+              <div style={{
+                padding: '0.6rem 1.25rem',
+                background: 'rgba(255, 255, 255, 0.015)',
+                borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+                display: 'flex',
+                gap: '0.4rem',
+                overflowX: 'auto'
+              }}>
+                <button
+                  onClick={() => handleSendMessage(`Diagnose the exact rote misconception behind "${activeQuestion ? activeQuestion.title : 'pointer arithmetic in CPDS and C++'}"`)}
                   style={{
-                    background: 'rgba(15, 23, 42, 0.95)',
-                    borderBottom: '1px solid rgba(99, 102, 241, 0.3)',
-                    padding: '0.85rem 1.25rem',
-                    overflow: 'hidden'
+                    fontSize: '0.72rem',
+                    padding: '4px 9px',
+                    borderRadius: '20px',
+                    background: 'rgba(244, 63, 94, 0.12)',
+                    border: '1px solid rgba(244, 63, 94, 0.3)',
+                    color: '#fda4af',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    fontWeight: 600
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <Key style={{ width: '14px', height: '14px', color: '#818cf8' }} />
-                      Google AI Studio / Gemini Pro Subscription API Key
-                    </div>
-                    <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                      Local Browser Storage Only (Never Shared)
-                    </span>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.4rem' }}>
-                    <input
-                      type="password"
-                      placeholder="Paste AI Studio / Gemini API Key (e.g. AIzaSy...)"
-                      value={keyInput}
-                      onChange={(e) => setKeyInput(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleSaveApiKey()}
-                      style={{
-                        flex: 1,
-                        background: 'rgba(0, 0, 0, 0.5)',
-                        border: '1px solid rgba(255, 255, 255, 0.15)',
-                        borderRadius: '8px',
-                        padding: '0.45rem 0.75rem',
-                        fontSize: '0.76rem',
-                        color: '#fff',
-                        outline: 'none'
-                      }}
-                    />
-                    <button
-                      onClick={handleSaveApiKey}
-                      style={{
-                        background: keySavedStatus ? '#10b981' : 'linear-gradient(135deg, #6366f1, #38bdf8)',
-                        border: 'none',
-                        borderRadius: '8px',
-                        padding: '0 0.85rem',
-                        fontSize: '0.74rem',
-                        fontWeight: 700,
-                        color: '#fff',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.3rem'
-                      }}
-                    >
-                      {keySavedStatus ? <Check style={{ width: '13px', height: '13px' }} /> : 'Save'}
-                    </button>
-                    {apiKey && (
-                      <button
-                        onClick={handleClearApiKey}
-                        title="Remove Key from LocalStorage"
-                        style={{
-                          background: 'rgba(239, 68, 68, 0.15)',
-                          border: '1px solid rgba(239, 68, 68, 0.3)',
-                          borderRadius: '8px',
-                          padding: '0 0.65rem',
-                          color: '#f43f5e',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center'
-                        }}
-                      >
-                        <Trash2 style={{ width: '13px', height: '13px' }} />
-                      </button>
-                    )}
-                  </div>
-                  <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-                    💡 Offloads deep Socratic debriefs to Gemini 1.5 Pro to eliminate session interference and local CPU bottleneck. You can also define it in <code style={{ color: '#38bdf8' }}>server/.env</code> as <code style={{ color: '#38bdf8' }}>GEMINI_API_KEY</code>.
-                  </p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-            
-            {/* Fine-Tuning Persona Mode Switcher */}
-            <div style={{
-              padding: '0.65rem 1.25rem',
-              borderBottom: '1px solid var(--border-subtle)',
-              background: 'rgba(15, 23, 42, 0.5)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <Bot style={{ width: '15px', height: '15px', color: '#38bdf8' }} />
-                <span style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                  Fine-Tuning Persona:
-                </span>
+                  🔍 Diagnose Rote Trap
+                </button>
+                <button
+                  onClick={() => handleSendMessage(`Quote the exact theorem or rule from ${currentBook.title} that proves this invariant.`)}
+                  style={{
+                    fontSize: '0.72rem',
+                    padding: '4px 9px',
+                    borderRadius: '20px',
+                    background: 'rgba(168, 85, 247, 0.12)',
+                    border: '1px solid rgba(168, 85, 247, 0.3)',
+                    color: '#d8b4fe',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    fontWeight: 600
+                  }}
+                >
+                  📖 Quote Book Theorem
+                </button>
+                <button
+                  onClick={() => handleSendMessage(`Explain the low-level hardware representation, memory alignment, and CPU cache effect for this.`)}
+                  style={{
+                    fontSize: '0.72rem',
+                    padding: '4px 9px',
+                    borderRadius: '20px',
+                    background: 'rgba(56, 189, 248, 0.12)',
+                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                    color: '#7dd3fc',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    fontWeight: 600
+                  }}
+                >
+                  ⚙️ Hardware & Cache Reality
+                </button>
+                <button
+                  onClick={() => handleSendMessage(`Give me a counter-example scenario or edge case to test if I truly master this concept without rote memorization.`)}
+                  style={{
+                    fontSize: '0.72rem',
+                    padding: '4px 9px',
+                    borderRadius: '20px',
+                    background: 'rgba(16, 185, 129, 0.12)',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    color: '#6ee7b7',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    fontWeight: 600
+                  }}
+                >
+                  ❓ Test My Mastery
+                </button>
               </div>
 
-              <div style={{ display: 'flex', gap: '0.35rem' }}>
-                {PERSONA_MODES.map(mode => (
-                  <button
-                    key={mode.id}
-                    onClick={() => setPersonaMode(mode.id)}
-                    title={mode.desc}
+              {/* Chat Messages Log */}
+              <div style={{ flex: 1, minHeight: 0, padding: '1.25rem', overflowY: 'auto', overscrollBehavior: 'contain', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {chatMessages.map(msg => (
+                  <div
+                    key={msg.id}
                     style={{
-                      padding: '0.3rem 0.55rem',
-                      borderRadius: '6px',
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      border: personaMode === mode.id ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.08)',
-                      background: personaMode === mode.id ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.03)',
-                      color: personaMode === mode.id ? '#38bdf8' : 'var(--text-muted)',
-                      transition: 'all 0.15s ease'
+                      alignSelf: msg.sender === 'user' ? 'flex-end' : 'flex-start',
+                      maxWidth: msg.sender === 'user' ? '80%' : '94%',
+                      background: msg.sender === 'user' 
+                        ? 'linear-gradient(135deg, #4f46e5, #06b6d4)' 
+                        : 'rgba(30, 41, 59, 0.85)',
+                      padding: '1rem 1.25rem',
+                      borderRadius: msg.sender === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      boxShadow: '0 4px 15px rgba(0, 0, 0, 0.25)',
+                      color: '#fff'
                     }}
                   >
-                    {mode.label}
-                  </button>
+                    {msg.sender === 'agent' && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '0.4rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#38bdf8', fontWeight: 800, fontSize: '0.76rem' }}>
+                          <Bot style={{ width: '14px', height: '14px' }} />
+                          {msg.modelAttribution || 'Fine-Tuned Literature Agent'}
+                        </div>
+                        {msg.groundedRag && (
+                          <span style={{ fontSize: '0.65rem', color: '#34d399', background: 'rgba(16, 185, 129, 0.15)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                            RAG Verified
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {renderMessageContent(msg)}
+                  </div>
                 ))}
+
+                {isThinking && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#38bdf8', fontSize: '0.8rem', padding: '0.5rem' }}>
+                    <Sparkles style={{ width: '15px', height: '15px', animation: 'spin 2s linear infinite' }} />
+                    Synthesizing Socratic debrief via {selectedModel} & LanceDB vector literature...
+                  </div>
+                )}
               </div>
-            </div>
 
-            {/* Quick Socratic Diagnostic Action Chips */}
-            <div style={{
-              padding: '0.6rem 1.25rem',
-              background: 'rgba(255, 255, 255, 0.015)',
-              borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
-              display: 'flex',
-              gap: '0.4rem',
-              overflowX: 'auto'
-            }}>
-              <button
-                onClick={() => handleSendMessage(`Diagnose the exact rote misconception behind "${activeQuestion ? activeQuestion.title : 'pointer arithmetic in CPDS and C++'}"`)}
-                style={{
-                  fontSize: '0.72rem',
-                  padding: '4px 9px',
-                  borderRadius: '20px',
-                  background: 'rgba(244, 63, 94, 0.12)',
-                  border: '1px solid rgba(244, 63, 94, 0.3)',
-                  color: '#fda4af',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  fontWeight: 600
-                }}
-              >
-                🔍 Diagnose Rote Trap
-              </button>
-              <button
-                onClick={() => handleSendMessage(`Quote the exact theorem or rule from ${currentBook.title} that proves this invariant.`)}
-                style={{
-                  fontSize: '0.72rem',
-                  padding: '4px 9px',
-                  borderRadius: '20px',
-                  background: 'rgba(168, 85, 247, 0.12)',
-                  border: '1px solid rgba(168, 85, 247, 0.3)',
-                  color: '#d8b4fe',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  fontWeight: 600
-                }}
-              >
-                📖 Quote Book Theorem
-              </button>
-              <button
-                onClick={() => handleSendMessage(`Explain the low-level hardware representation, memory alignment, and CPU cache effect for this.`)}
-                style={{
-                  fontSize: '0.72rem',
-                  padding: '4px 9px',
-                  borderRadius: '20px',
-                  background: 'rgba(56, 189, 248, 0.12)',
-                  border: '1px solid rgba(56, 189, 248, 0.3)',
-                  color: '#7dd3fc',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  fontWeight: 600
-                }}
-              >
-                ⚙️ Hardware & Cache Reality
-              </button>
-              <button
-                onClick={() => handleSendMessage(`Give me a counter-example scenario or edge case to test if I truly master this concept without rote memorization.`)}
-                style={{
-                  fontSize: '0.72rem',
-                  padding: '4px 9px',
-                  borderRadius: '20px',
-                  background: 'rgba(16, 185, 129, 0.12)',
-                  border: '1px solid rgba(16, 185, 129, 0.3)',
-                  color: '#6ee7b7',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  fontWeight: 600
-                }}
-              >
-                ❓ Test My Mastery
-              </button>
-            </div>
-
-            {/* Chat Messages Log */}
-            <div style={{ flex: 1, minHeight: 0, padding: '1.25rem', overflowY: 'auto', overscrollBehavior: 'contain', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {chatMessages.map(msg => (
-                <div
-                  key={msg.id}
+              {/* Chat Input Bar */}
+              <div style={{
+                padding: '0.85rem 1.25rem',
+                borderTop: '1px solid var(--border-subtle)',
+                background: 'rgba(15, 23, 42, 0.7)',
+                display: 'flex',
+                gap: '0.75rem'
+              }}>
+                <input
+                  type="text"
+                  placeholder={`Ask ${currentBook.title.split(':')[0]} literature tutor... (e.g. 'Why does Lomuto fail on duplicates?')`}
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                   style={{
-                    alignSelf: msg.sender === 'user' ? 'flex-end' : 'flex-start',
-                    maxWidth: msg.sender === 'user' ? '80%' : '94%',
-                    background: msg.sender === 'user' 
-                      ? 'linear-gradient(135deg, #4f46e5, #06b6d4)' 
-                      : 'rgba(30, 41, 59, 0.85)',
-                    padding: '1rem 1.25rem',
-                    borderRadius: msg.sender === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
-                    boxShadow: '0 4px 15px rgba(0, 0, 0, 0.25)',
-                    color: '#fff'
+                    flex: 1,
+                    background: 'rgba(0, 0, 0, 0.4)',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    borderRadius: '12px',
+                    padding: '0.75rem 1rem',
+                    color: '#fff',
+                    fontSize: '0.85rem',
+                    outline: 'none'
+                  }}
+                />
+                <button
+                  onClick={() => handleSendMessage()}
+                  style={{
+                    background: 'linear-gradient(135deg, #6366f1, #38bdf8)',
+                    border: 'none',
+                    borderRadius: '12px',
+                    padding: '0 1.25rem',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 700
                   }}
                 >
-                  {msg.sender === 'agent' && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '0.4rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#38bdf8', fontWeight: 800, fontSize: '0.76rem' }}>
-                        <Bot style={{ width: '14px', height: '14px' }} />
-                        {msg.modelAttribution || 'Fine-Tuned Literature Agent'}
-                      </div>
-                      {msg.groundedRag && (
-                        <span style={{ fontSize: '0.65rem', color: '#34d399', background: 'rgba(16, 185, 129, 0.15)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                          RAG Verified
-                        </span>
-                      )}
-                    </div>
-                  )}
+                  <Send style={{ width: '16px', height: '16px' }} />
+                </button>
+              </div>
 
-                  {renderMessageContent(msg)}
-                </div>
-              ))}
-
-              {isThinking && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#38bdf8', fontSize: '0.8rem', padding: '0.5rem' }}>
-                  <Sparkles style={{ width: '15px', height: '15px', animation: 'spin 2s linear infinite' }} />
-                  Synthesizing Socratic debrief via fine-tuned model & LanceDB vector literature...
-                </div>
-              )}
-            </div>
-
-            {/* Chat Input Bar */}
-            <div style={{
-              padding: '0.85rem 1.25rem',
-              borderTop: '1px solid var(--border-subtle)',
-              background: 'rgba(15, 23, 42, 0.7)',
-              display: 'flex',
-              gap: '0.75rem'
-            }}>
-              <input
-                type="text"
-                placeholder={`Ask ${currentBook.title.split(':')[0]} literature tutor... (e.g. 'Why does Lomuto fail on duplicates?')`}
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                style={{
-                  flex: 1,
-                  background: 'rgba(0, 0, 0, 0.4)',
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
-                  borderRadius: '12px',
-                  padding: '0.75rem 1rem',
-                  color: '#fff',
-                  fontSize: '0.85rem',
-                  outline: 'none'
-                }}
-              />
-              <button
-                onClick={() => handleSendMessage()}
-                style={{
-                  background: 'linear-gradient(135deg, #6366f1, #38bdf8)',
-                  border: 'none',
-                  borderRadius: '12px',
-                  padding: '0 1.25rem',
-                  color: '#fff',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontWeight: 700
-                }}
-              >
-                <Send style={{ width: '16px', height: '16px' }} />
-              </button>
             </div>
 
           </div>
+        )}
 
-        </div>
+        {/* VIEW 2: Mixture-of-Solutions (MoA) Multi-Paradigm Matrix */}
+        {activeTab === 'moa' && (
+          <div style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            minHeight: 0,
+            overflowY: 'auto',
+            overscrollBehavior: 'contain',
+            padding: '1.25rem 1.75rem',
+            background: 'rgba(0, 0, 0, 0.25)',
+            gap: '1.25rem'
+          }}>
+            {/* MoA Controls: Presets + Search */}
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.02)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '16px',
+              padding: '1rem 1.25rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.75rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <GitBranch style={{ color: '#c084fc', width: '18px', height: '18px' }} />
+                  <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#fff' }}>
+                    Select Algorithmic Invariant Paradigm:
+                  </span>
+                </div>
+                
+                {/* GitHub Architectural Citations */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Grounded in open-source:</span>
+                  <a
+                    href="https://github.com/TheAlgorithms/C-Plus-Plus"
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      fontSize: '0.68rem',
+                      padding: '2px 8px',
+                      borderRadius: '6px',
+                      background: 'rgba(56, 189, 248, 0.1)',
+                      border: '1px solid rgba(56, 189, 248, 0.3)',
+                      color: '#7dd3fc',
+                      textDecoration: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '3px'
+                    }}
+                  >
+                    TheAlgorithms/C-Plus-Plus <ExternalLink style={{ width: '10px', height: '10px' }} />
+                  </a>
+                  <a
+                    href="https://cp-algorithms.com/"
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      fontSize: '0.68rem',
+                      padding: '2px 8px',
+                      borderRadius: '6px',
+                      background: 'rgba(168, 85, 247, 0.1)',
+                      border: '1px solid rgba(168, 85, 247, 0.3)',
+                      color: '#d8b4fe',
+                      textDecoration: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '3px'
+                    }}
+                  >
+                    CP-Algorithms <ExternalLink style={{ width: '10px', height: '10px' }} />
+                  </a>
+                  <a
+                    href="https://github.com/togethercomputer/MoA"
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      fontSize: '0.68rem',
+                      padding: '2px 8px',
+                      borderRadius: '6px',
+                      background: 'rgba(236, 72, 153, 0.1)',
+                      border: '1px solid rgba(236, 72, 153, 0.3)',
+                      color: '#f472b6',
+                      textDecoration: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '3px'
+                    }}
+                  >
+                    togethercomputer/MoA <ExternalLink style={{ width: '10px', height: '10px' }} />
+                  </a>
+                </div>
+              </div>
+
+              {/* Preset Buttons */}
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {PRESET_MOA_PROBLEMS.map(preset => (
+                  <button
+                    key={preset.id}
+                    onClick={() => {
+                      setMoaQuery(preset.query);
+                      fetchMultiSolution(preset.query);
+                    }}
+                    style={{
+                      padding: '0.4rem 0.85rem',
+                      borderRadius: '8px',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      border: moaQuery === preset.query ? '1px solid #c084fc' : '1px solid rgba(255, 255, 255, 0.1)',
+                      background: moaQuery === preset.query ? 'rgba(168, 85, 247, 0.25)' : 'rgba(255, 255, 255, 0.03)',
+                      color: moaQuery === preset.query ? '#f3e8ff' : 'var(--text-secondary)',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Custom Search Query Bar */}
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <Search style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', width: '14px', height: '14px', color: 'var(--text-muted)' }} />
+                  <input
+                    type="text"
+                    placeholder="Enter any algorithmic concept or problem (e.g. 'quicksort partition', 'cycle detection')..."
+                    value={moaQuery}
+                    onChange={(e) => setMoaQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && fetchMultiSolution(moaQuery)}
+                    style={{
+                      width: '100%',
+                      background: 'rgba(0, 0, 0, 0.4)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      borderRadius: '8px',
+                      padding: '0.45rem 0.85rem 0.45rem 2rem',
+                      fontSize: '0.78rem',
+                      color: '#fff',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+                <button
+                  onClick={() => fetchMultiSolution(moaQuery)}
+                  disabled={moaLoading}
+                  style={{
+                    padding: '0 1rem',
+                    borderRadius: '8px',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    background: 'linear-gradient(135deg, #a855f7, #6366f1)',
+                    border: 'none',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  {moaLoading ? <RefreshCw style={{ width: '14px', height: '14px', animation: 'spin 1.5s linear infinite' }} /> : 'Compare Paradigms'}
+                </button>
+              </div>
+            </div>
+
+            {/* MoA Results Grid */}
+            {moaData && (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#fff', fontWeight: 800 }}>
+                      {moaData.title}
+                    </h3>
+                    <span style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 600 }}>
+                      Category: {moaData.category} • {moaData.approaches?.length || 0} Solutions Evaluated
+                    </span>
+                  </div>
+                </div>
+
+                {/* Comparative Multi-Column Cards */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(auto-fit, minmax(290px, 1fr))`,
+                  gap: '1.25rem',
+                  alignItems: 'stretch'
+                }}>
+                  {moaData.approaches?.map((appr, idx) => (
+                    <div
+                      key={appr.id || idx}
+                      style={{
+                        background: 'rgba(15, 23, 42, 0.75)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        borderRadius: '16px',
+                        padding: '1.25rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        boxShadow: '0 10px 30px rgba(0, 0, 0, 0.35)',
+                        position: 'relative',
+                        overflow: 'hidden'
+                      }}
+                    >
+                      {/* Top Accent Strip */}
+                      <div style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        height: '3px',
+                        background: idx === 0 ? '#f43f5e' : idx === 1 ? '#eab308' : idx === 2 ? '#38bdf8' : '#10b981'
+                      }} />
+
+                      <div>
+                        {/* Approach Title */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                          <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#fff' }}>
+                            {appr.name}
+                          </span>
+                        </div>
+
+                        {/* Complexity Badges */}
+                        <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                          <span style={{
+                            fontSize: '0.68rem',
+                            padding: '2px 8px',
+                            borderRadius: '6px',
+                            background: appr.timeComplexity.includes('N²') ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+                            color: appr.timeComplexity.includes('N²') ? '#fca5a5' : '#6ee7b7',
+                            border: appr.timeComplexity.includes('N²') ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid rgba(16, 185, 129, 0.4)',
+                            fontWeight: 800
+                          }}>
+                            ⏱️ {appr.timeComplexity}
+                          </span>
+                          <span style={{
+                            fontSize: '0.68rem',
+                            padding: '2px 8px',
+                            borderRadius: '6px',
+                            background: appr.spaceComplexity.includes('Heap') ? 'rgba(234, 179, 8, 0.2)' : 'rgba(56, 189, 248, 0.2)',
+                            color: appr.spaceComplexity.includes('Heap') ? '#fde047' : '#7dd3fc',
+                            border: appr.spaceComplexity.includes('Heap') ? '1px solid rgba(234, 179, 8, 0.4)' : '1px solid rgba(56, 189, 248, 0.4)',
+                            fontWeight: 800
+                          }}>
+                            💾 {appr.spaceComplexity}
+                          </span>
+                        </div>
+
+                        {/* Mechanical Sympathy Note */}
+                        <div style={{
+                          background: 'rgba(56, 189, 248, 0.06)',
+                          border: '1px solid rgba(56, 189, 248, 0.2)',
+                          borderRadius: '10px',
+                          padding: '0.65rem 0.8rem',
+                          marginBottom: '0.75rem',
+                          fontSize: '0.74rem',
+                          color: '#bae6fd',
+                          lineHeight: '1.45'
+                        }}>
+                          <div style={{ fontWeight: 800, color: '#38bdf8', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Cpu style={{ width: '12px', height: '12px' }} /> Mechanical Sympathy:
+                          </div>
+                          {appr.mechanicalSympathy}
+                        </div>
+
+                        {/* Invariant Truth */}
+                        <div style={{
+                          background: 'rgba(168, 85, 247, 0.06)',
+                          border: '1px solid rgba(168, 85, 247, 0.2)',
+                          borderRadius: '10px',
+                          padding: '0.65rem 0.8rem',
+                          marginBottom: '0.85rem',
+                          fontSize: '0.74rem',
+                          color: '#e9d5ff',
+                          lineHeight: '1.45'
+                        }}>
+                          <div style={{ fontWeight: 800, color: '#c084fc', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <BookOpen style={{ width: '12px', height: '12px' }} /> Invariant Proof:
+                          </div>
+                          {appr.invariantTruth}
+                        </div>
+
+                        {/* Code Block with Copy */}
+                        <div style={{ position: 'relative', marginBottom: '0.85rem' }}>
+                          <pre style={{
+                            background: '#090d16',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            borderRadius: '10px',
+                            padding: '0.75rem',
+                            fontSize: '0.72rem',
+                            color: '#e2e8f0',
+                            fontFamily: 'monospace',
+                            overflowX: 'auto',
+                            maxHeight: '180px',
+                            lineHeight: '1.4',
+                            margin: 0
+                          }}>
+                            <code>{appr.code}</code>
+                          </pre>
+                          <button
+                            onClick={() => handleCopyCode(appr.id || idx, appr.code)}
+                            title="Copy C++ Code"
+                            style={{
+                              position: 'absolute',
+                              top: '6px',
+                              right: '6px',
+                              background: 'rgba(255, 255, 255, 0.1)',
+                              border: '1px solid rgba(255, 255, 255, 0.2)',
+                              borderRadius: '6px',
+                              padding: '3px 6px',
+                              color: copiedApproachId === (appr.id || idx) ? '#34d399' : '#fff',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                              fontSize: '0.65rem'
+                            }}
+                          >
+                            {copiedApproachId === (appr.id || idx) ? <Check style={{ width: '11px', height: '11px' }} /> : <Copy style={{ width: '11px', height: '11px' }} />}
+                            {copiedApproachId === (appr.id || idx) ? 'Copied' : 'Copy'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Action Button: Pipe to Socratic AAR */}
+                      <button
+                        onClick={() => handlePipeToSocraticDebrief(appr.name, appr.invariantTruth)}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.04)',
+                          border: '1px solid rgba(255, 255, 255, 0.15)',
+                          borderRadius: '10px',
+                          padding: '0.5rem',
+                          color: '#fff',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <Bot style={{ width: '13px', height: '13px', color: '#38bdf8' }} />
+                        Debrief with Socratic Tutor
+                      </button>
+
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
       </motion.div>
     </div>

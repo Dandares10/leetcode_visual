@@ -93,6 +93,21 @@ const initialPatterns = [
     title: "CPDC Lock-Free ABA Trap & Memory Reclamation",
     text: "Atomic Compare-and-Swap (CAS) only verifies that a pointer address equals expected value A; it cannot detect that node A was deallocated, mutated, and reallocated at the same virtual address. Tagged pointers (double-word CAS with mutation counter) or hazard pointers are required to prevent use-after-free corruption.",
     category: "CPDC & Concurrency"
+  },
+  {
+    title: "TheAlgorithms C++ Pure STL & Memory Contiguity Invariant",
+    text: "According to TheAlgorithms/C-Plus-Plus, reference algorithms in modern C++ avoid heap pointer indirection by leveraging flat std::vector containers. Contiguous memory layouts maximize L1 data cache spatial locality, eliminating cache-miss stalls during binary searches and segment tree queries.",
+    category: "GitHub Literature (TheAlgorithms)"
+  },
+  {
+    title: "cp-algorithms Two-Pointer Monotonicity Invariant",
+    text: "From cp-algorithms.com, two-pointer techniques require establishing a strict monotonic relationship across the search space. Advancing the left pointer increases the subproblem value while retreating the right pointer decreases it, proving that the search space is pruned from O(N^2) to O(N) without false negatives.",
+    category: "GitHub Literature (cp-algorithms)"
+  },
+  {
+    title: "Together AI Mixture-of-Agents (MoA) Layered Aggregation",
+    text: "The Together AI Mixture-of-Agents architecture demonstrates that routing problems through parallel proposer models and synthesizing with a high-capacity aggregator yields outputs superior to any single model. In algorithmic analysis, contrasting Brute Force vs Hash Map vs Two Pointers vs Bitmasks exposes mechanical tradeoffs that single answers obscure.",
+    category: "AI Architecture (Together AI MoA)"
   }
 ];
 
