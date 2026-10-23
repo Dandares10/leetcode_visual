@@ -185,4 +185,17 @@ async function queryContext(userPrompt, limit = 2) {
   return "";
 }
 
-module.exports = { initRAG, queryContext };
+// Helper to generate embedding vector for arbitrary text
+async function embedText(text) {
+  if (!extractor || !text) return null;
+  const output = await extractor(text, { pooling: 'mean', normalize: true });
+  return Array.from(output.data);
+}
+
+module.exports = { 
+  initRAG, 
+  queryContext, 
+  embedText,
+  getDb: () => db,
+  getExtractor: () => extractor
+};
