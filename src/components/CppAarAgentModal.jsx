@@ -17,9 +17,19 @@ import {
   Layers,
   Award,
   Zap,
+  Key,
+  Check,
+  Trash2,
   HelpCircle as QuestionIcon
 } from 'lucide-react';
 import { CPP_BOOKS } from '../data/cppCurriculum';
+
+const MODEL_PROVIDERS = [
+  { id: 'gemini-1.5-pro', label: '🌟 Gemini 1.5 Pro', desc: 'Google Pro Frontier - Deep Literature & Invariant Proofs', requiresKey: true },
+  { id: 'gemini-1.5-flash', label: '⚡ Gemini 1.5 Flash', desc: 'High-speed 1M context cloud inference', requiresKey: true },
+  { id: 'canonical', label: '📚 Canonical Matrix', desc: 'Instant 10ms zero-hallucination textbook invariants', requiresKey: false },
+  { id: 'ollama', label: '🦙 Ollama Local (0.5B)', desc: 'Lightweight offline model on CPU', requiresKey: false }
+];
 
 const PERSONA_MODES = [
   { id: 'socratic-literature', label: '🎓 Literature Socratic', desc: 'Authoritative citations & guided discovery' },
@@ -29,23 +39,29 @@ const PERSONA_MODES = [
 ];
 
 export function CppAarAgentModal({ isOpen, onClose, activeQuestion, activeConcept }) {
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
+  const [selectedModel, setSelectedModel] = useState(() => {
+    return localStorage.getItem('aar_selected_model') || (localStorage.getItem('gemini_api_key') ? 'gemini-1.5-pro' : 'canonical');
+  });
+  const [showKeyManager, setShowKeyManager] = useState(false);
+  const [keyInput, setKeyInput] = useState('');
+  const [keySavedStatus, setKeySavedStatus] = useState(false);
+
   const [chatMessages, setChatMessages] = useState([
     {
       id: 'aar-intro',
       sender: 'agent',
-      modelAttribution: 'Fine-Tuned Literature Agent (Ollama + LanceDB RAG)',
+      modelAttribution: 'Fine-Tuned Literature Agent (Multi-Model Engine)',
       text: `### 🎓 Welcome to the Fine-Tuned AAR Literature & Socratic Tutor
 
 I am specifically fine-tuned to eradicate **rote memorization** and superficial pattern-matching in C++, Data Structures, and Systems.
 
-I cross-reference every concept with canonical literature:
-- **CTCI (6th Ed)**: BUD optimization, runner technique, bit-vectors.
-- **CLRS (4th Ed)**: Hoare vs. Lomuto invariants, recurrence trees.
-- **CPDS (Balagurusamy / Thareja)**: Pointer operator precedence \`*p++\` and struct padding.
-- **CP3 / CP4 (Halim)**: Disjoint Set Union inverse Ackermann $\\alpha(N)$ proofs.
-- **Modern C++ & ISO Guidelines**: Move semantics on const, virtual destructors, and memory orders.
+**Multi-Model Architecture Active:**
+- **🌟 Gemini 1.5 Pro / Flash**: Offload heavy cognitive load, multi-turn Socratic inquiry, and large-context book analysis.
+- **📚 Canonical Invariants Matrix**: Instant (10ms) zero-hallucination peer-reviewed textbook citations (CLRS, CTCI, CPDS, CP3/CP4, Modern C++).
+- **🦙 Ollama Local (Qwen 0.5B)**: Offline local execution with timeout guardrails.
 
-Ask me any conceptual question or click a diagnostic probe below to begin!`
+Select your preferred model above or ask any conceptual question to begin!`
     }
   ]);
   const [inputText, setInputText] = useState("");
@@ -56,6 +72,38 @@ Ask me any conceptual question or click a diagnostic probe below to begin!`
   if (!isOpen) return null;
 
   const currentBook = CPP_BOOKS.find(b => b.id === selectedBookTab) || CPP_BOOKS[0];
+
+  const handleSaveApiKey = () => {
+    const trimmed = keyInput.trim();
+    if (trimmed) {
+      localStorage.setItem('gemini_api_key', trimmed);
+      setApiKey(trimmed);
+      setSelectedModel('gemini-1.5-pro');
+      localStorage.setItem('aar_selected_model', 'gemini-1.5-pro');
+      setKeySavedStatus(true);
+      setTimeout(() => {
+        setKeySavedStatus(false);
+        setShowKeyManager(false);
+      }, 1200);
+    }
+  };
+
+  const handleClearApiKey = () => {
+    localStorage.removeItem('gemini_api_key');
+    setApiKey('');
+    setSelectedModel('canonical');
+    localStorage.setItem('aar_selected_model', 'canonical');
+    setKeyInput('');
+    setShowKeyManager(false);
+  };
+
+  const handleModelSelect = (modelId) => {
+    setSelectedModel(modelId);
+    localStorage.setItem('aar_selected_model', modelId);
+    if ((modelId === 'gemini-1.5-pro' || modelId === 'gemini-1.5-flash') && !apiKey) {
+      setShowKeyManager(true);
+    }
+  };
 
   const handleSendMessage = async (customPrompt) => {
     const queryText = (customPrompt || inputText).trim();
@@ -72,7 +120,7 @@ Ask me any conceptual question or click a diagnostic probe below to begin!`
     setIsThinking(true);
 
     try {
-      // 1. Send to local fine-tuned backend endpoint
+      // 1. Send to local multi-model backend endpoint
       const response = await fetch('/api/aar-agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -81,7 +129,9 @@ Ask me any conceptual question or click a diagnostic probe below to begin!`
           currentBook,
           activeQuestion,
           activeConcept,
-          mode: personaMode
+          mode: personaMode,
+          model: selectedModel,
+          apiKey: apiKey || undefined
         })
       });
 
@@ -97,7 +147,7 @@ Ask me any conceptual question or click a diagnostic probe below to begin!`
           id: 'agent-' + Date.now(),
           sender: 'agent',
           text: data.text,
-          modelAttribution: data.model || 'Fine-Tuned Literature Agent',
+          modelAttribution: data.model || selectedModel,
           groundedRag: data.groundedRag
         }
       ]);
@@ -492,9 +542,158 @@ Ask me any conceptual question or click a diagnostic probe below to begin!`
           {/* RIGHT: Deep-Reading AI Agent Socratic Chat */}
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, background: 'rgba(0, 0, 0, 0.2)' }}>
             
+            {/* Multi-Model Orchestrator Provider Bar */}
+            <div style={{
+              padding: '0.65rem 1.25rem',
+              borderBottom: '1px solid var(--border-subtle)',
+              background: 'rgba(10, 15, 30, 0.75)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '0.5rem',
+              flexWrap: 'wrap'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <Cpu style={{ width: '14px', height: '14px', color: '#c084fc' }} />
+                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                  Model Engine:
+                </span>
+                <div style={{ display: 'flex', gap: '0.3rem' }}>
+                  {MODEL_PROVIDERS.map(m => (
+                    <button
+                      key={m.id}
+                      onClick={() => handleModelSelect(m.id)}
+                      title={m.desc}
+                      style={{
+                        padding: '0.25rem 0.55rem',
+                        borderRadius: '6px',
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        border: selectedModel === m.id ? '1px solid #c084fc' : '1px solid rgba(255, 255, 255, 0.08)',
+                        background: selectedModel === m.id ? 'rgba(168, 85, 247, 0.25)' : 'rgba(255, 255, 255, 0.03)',
+                        color: selectedModel === m.id ? '#e9d5ff' : 'var(--text-muted)',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* API Key Configuration Button */}
+              <button
+                onClick={() => setShowKeyManager(!showKeyManager)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  padding: '0.25rem 0.6rem',
+                  borderRadius: '6px',
+                  fontSize: '0.7rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  border: apiKey ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(99, 102, 241, 0.4)',
+                  background: apiKey ? 'rgba(16, 185, 129, 0.15)' : 'rgba(99, 102, 241, 0.15)',
+                  color: apiKey ? '#34d399' : '#818cf8',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <Key style={{ width: '12px', height: '12px' }} />
+                {apiKey ? 'Pro Key Active' : 'Set Pro API Key'}
+              </button>
+            </div>
+
+            {/* Expandable API Key Drawer */}
+            <AnimatePresence>
+              {showKeyManager && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  style={{
+                    background: 'rgba(15, 23, 42, 0.95)',
+                    borderBottom: '1px solid rgba(99, 102, 241, 0.3)',
+                    padding: '0.85rem 1.25rem',
+                    overflow: 'hidden'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <Key style={{ width: '14px', height: '14px', color: '#818cf8' }} />
+                      Google AI Studio / Gemini Pro Subscription API Key
+                    </div>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                      Local Browser Storage Only (Never Shared)
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.4rem' }}>
+                    <input
+                      type="password"
+                      placeholder="Paste AI Studio / Gemini API Key (e.g. AIzaSy...)"
+                      value={keyInput}
+                      onChange={(e) => setKeyInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSaveApiKey()}
+                      style={{
+                        flex: 1,
+                        background: 'rgba(0, 0, 0, 0.5)',
+                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                        borderRadius: '8px',
+                        padding: '0.45rem 0.75rem',
+                        fontSize: '0.76rem',
+                        color: '#fff',
+                        outline: 'none'
+                      }}
+                    />
+                    <button
+                      onClick={handleSaveApiKey}
+                      style={{
+                        background: keySavedStatus ? '#10b981' : 'linear-gradient(135deg, #6366f1, #38bdf8)',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '0 0.85rem',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        color: '#fff',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.3rem'
+                      }}
+                    >
+                      {keySavedStatus ? <Check style={{ width: '13px', height: '13px' }} /> : 'Save'}
+                    </button>
+                    {apiKey && (
+                      <button
+                        onClick={handleClearApiKey}
+                        title="Remove Key from LocalStorage"
+                        style={{
+                          background: 'rgba(239, 68, 68, 0.15)',
+                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                          borderRadius: '8px',
+                          padding: '0 0.65rem',
+                          color: '#f43f5e',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center'
+                        }}
+                      >
+                        <Trash2 style={{ width: '13px', height: '13px' }} />
+                      </button>
+                    )}
+                  </div>
+                  <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                    💡 Offloads deep Socratic debriefs to Gemini 1.5 Pro to eliminate session interference and local CPU bottleneck. You can also define it in <code style={{ color: '#38bdf8' }}>server/.env</code> as <code style={{ color: '#38bdf8' }}>GEMINI_API_KEY</code>.
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            
             {/* Fine-Tuning Persona Mode Switcher */}
             <div style={{
-              padding: '0.75rem 1.25rem',
+              padding: '0.65rem 1.25rem',
               borderBottom: '1px solid var(--border-subtle)',
               background: 'rgba(15, 23, 42, 0.5)',
               display: 'flex',

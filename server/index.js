@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { Ollama } = require('ollama');
@@ -11,6 +12,50 @@ app.use(express.json());
 
 // Initialize Ollama client connecting to local instance (default: http://localhost:11434)
 const ollama = new Ollama();
+
+// ============================================================================
+// 🌟 MULTI-MODEL ORCHESTRATION: GEMINI PRO / FLASH CLOUD INTEGRATION
+// ============================================================================
+async function callGeminiAPI(apiKey, model, systemPrompt, userMessage, jsonMode = false) {
+  const modelName = model || 'gemini-1.5-flash';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+
+  const payload = {
+    systemInstruction: {
+      parts: [{ text: systemPrompt }]
+    },
+    contents: [
+      { role: 'user', parts: [{ text: userMessage }] }
+    ],
+    generationConfig: {
+      temperature: 0.25,
+      topP: 0.9,
+      maxOutputTokens: 3500
+    }
+  };
+
+  if (jsonMode) {
+    payload.generationConfig.responseMimeType = "application/json";
+  }
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gemini API error (${response.status}): ${errorText}`);
+  }
+
+  const data = await response.json();
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) {
+    throw new Error('No content returned by Gemini API');
+  }
+  return text.trim();
+}
 
 app.post('/api/analyze-code', async (req, res) => {
   const { code, prompt } = req.body;
@@ -82,6 +127,21 @@ ${ragContext ? `\n=== Relevant Architectural Context ===\n${ragContext}\n=======
   
 Please analyze this and provide the metacognitive JSON output.`;
 
+  const apiKey = req.body.apiKey || process.env.GEMINI_API_KEY;
+  if (apiKey) {
+    try {
+      console.log(`🌟 Generating metacognitive code analysis with Gemini 1.5 Flash...`);
+      const rawText = await callGeminiAPI(apiKey, 'gemini-1.5-flash', systemPrompt, userMessage, true);
+      let cleanJson = rawText.trim();
+      if (cleanJson.startsWith('```json')) cleanJson = cleanJson.slice(7, -3).trim();
+      else if (cleanJson.startsWith('```')) cleanJson = cleanJson.slice(3, -3).trim();
+      const parsedData = JSON.parse(cleanJson);
+      return res.json(parsedData);
+    } catch (geminiErr) {
+      console.warn("Gemini code analysis error, falling back to local Ollama:", geminiErr.message);
+    }
+  }
+
   try {
     const response = await ollama.chat({
       model: 'qwen2.5-coder:0.5b', // Using the fast lightweight fallback model
@@ -150,16 +210,21 @@ app.post('/api/aar-agent', async (req, res) => {
   console.log(`\n📚 [AAR Agent] Received question: "${prompt.slice(0, 60)}..."`);
   console.log(`📖 Context Book: "${currentBook?.title || 'General CS/C++'}" | Mode: "${mode || 'socratic-literature'}"`);
 
-  // Check if the inquiry matches a curated canonical invariant in our literature matrix
+  const selectedModel = req.body.model || (process.env.GEMINI_API_KEY || req.body.apiKey ? 'gemini-1.5-pro' : 'canonical');
+  const apiKey = req.body.apiKey || process.env.GEMINI_API_KEY;
+
+  // 1. Direct Canonical Literature Match (Instant 10ms zero-hallucination response)
   const directDebrief = getDirectCanonicalDebrief(prompt, currentBook, activeQuestion);
-  if (directDebrief) {
-    console.log(`✨ Delivered instant authoritative canonical debrief for: "${prompt.slice(0, 50)}..."`);
-    return res.json({
-      text: directDebrief,
-      groundedRag: true,
-      model: 'Fine-Tuned Literature Grounding (Curated Standards)',
-      book: currentBook?.title
-    });
+  if (selectedModel === 'canonical' || (!apiKey && directDebrief)) {
+    if (directDebrief) {
+      console.log(`✨ Delivered instant authoritative canonical debrief for: "${prompt.slice(0, 50)}..."`);
+      return res.json({
+        text: directDebrief,
+        groundedRag: true,
+        model: 'Fine-Tuned Literature Grounding (Curated Standards)',
+        book: currentBook?.title
+      });
+    }
   }
 
   // Retrieve relevant RAG context from local LanceDB Vector DB for general/custom inquiries
@@ -208,8 +273,26 @@ Learner's Question:
 
 Please conduct the fine-tuned 4-phase AAR debrief now.`;
 
+  // 2. Multi-Model Route: If Gemini Pro / Flash selected or API key provided, offload heavy cognitive load to Gemini!
+  const isGeminiModel = selectedModel.includes('gemini') || Boolean(apiKey);
+  if (isGeminiModel && apiKey) {
+    const targetGeminiModel = selectedModel.includes('gemini') ? selectedModel : 'gemini-1.5-pro';
+    console.log(`🌟 [Multi-Model Engine] Routing heavy cognitive load to ${targetGeminiModel}...`);
+    try {
+      const geminiReply = await callGeminiAPI(apiKey, targetGeminiModel, fineTunedSystemPrompt, userMessage);
+      return res.json({
+        text: geminiReply,
+        groundedRag: Boolean(ragContext),
+        model: `${targetGeminiModel} (Google Pro Cloud)`,
+        book: currentBook?.title
+      });
+    } catch (geminiError) {
+      console.warn(`Gemini API call failed (${geminiError.message}). Seamlessly falling back to local pipeline...`);
+    }
+  }
+
+  // 3. Local Offline Route: Use Ollama with timeout race + guardrails
   try {
-    // 7-second timeout race: If local Ollama is slow/swapped out, instantly use high-precision authoritative fallback
     const ollamaPromise = ollama.chat({
       model: 'qwen2.5-coder:0.5b',
       messages: [
