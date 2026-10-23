@@ -128,9 +128,58 @@ export const CPP_BOOKS = [
     ]
   },
   {
+    id: "cp3-cp4-halim",
+    title: "Competitive Programming (CP3 / CP4)",
+    category: "Competitive Programming (CP3/CPH)",
+    author: "Dr. Steven Halim & Dr. Felix Halim (NUS / IOI & ICPC Coaches)",
+    license: "CPbook.net Community Reference",
+    url: "https://cpbook.net/",
+    githubUrl: "https://github.com/stevenhalim/cpbook-code",
+    description: "The global competitive programming bible. Master advanced contest data structures: Disjoint Set Union (Union-Find) with rank & path compression, Fenwick Trees (BIT), Segment Trees with lazy propagation, and bitmask DP.",
+    keyChapters: [
+      { number: "02", title: "Data Structures with Built-in Libraries & Contest Specials (DSU, Fenwick Tree)" },
+      { number: "03", title: "Problem Solving Paradigms: Complete Search, Divide & Conquer, Greedy, DP" },
+      { number: "04", title: "Graph: Traversal (Bipartite, Articulation points, Bridges), MST (Kruskal/Prim)" },
+      { number: "05", title: "Mathematics: Fast Exponentiation, Modular Arithmetic, Prime Sieve of Eratosthenes" }
+    ]
+  },
+  {
+    id: "clrs-introduction-to-algorithms",
+    title: "CLRS: Introduction to Algorithms (4th Edition)",
+    category: "CLRS & Algorithms",
+    author: "Thomas H. Cormen, Charles E. Leiserson, Ronald L. Rivest, Clifford Stein (MIT Press)",
+    license: "MIT OpenCourseWare (6.006 / 6.046J) Open Reference",
+    url: "https://mitpress.mit.edu/9780262046305/introduction-to-algorithms/",
+    githubUrl: "https://github.com/gzc/CLRS",
+    description: "The universally revered algorithms bible. Rigorous loop invariants, Master Theorem recurrence bounds, Lomuto vs Hoare partitioning, Red-Black tree rotation proofs, dynamic programming optimal substructure, and max flow.",
+    keyChapters: [
+      { number: "02", title: "Getting Started: Formal Loop Invariants, Insertion Sort vs Merge Sort Recurrences" },
+      { number: "04", title: "Divide-and-Conquer: The Master Method for Recurrences (T(n) = aT(n/b) + f(n))" },
+      { number: "07", title: "Quicksort: Hoare vs Lomuto Partitioning, Worst-Case Analysis on Equal Keys" },
+      { number: "15", title: "Dynamic Programming: Optimal Substructure, Overlapping Subproblems, Memoization" },
+      { number: "22", title: "Elementary Graph Algorithms: Representations, BFS, DFS, Topological Sort, SCC" }
+    ]
+  },
+  {
+    id: "cpds-balagurusamy-thareja",
+    title: "CPDS: C Programming and Data Structures",
+    category: "CPDS (C & Data Structures)",
+    author: "E. Balagurusamy / Reema Thareja / B.A. Forouzan & R.F. Gilberg",
+    license: "Prescribed University Engineering Standard (Anna Univ / JNTU / VTU)",
+    url: "https://www.geeksforgeeks.org/c-programming-language/",
+    description: "The core foundational undergraduate textbook curriculum across Indian engineering universities. Teaches raw pointer mechanics, address arithmetic, memory alignment padding, heap management (malloc/free), and linked representations.",
+    keyChapters: [
+      { number: "05", title: "Pointers & Address Arithmetic: (*p)++ vs *p++, Double Pointers, Function Pointers" },
+      { number: "07", title: "Structures & Memory Alignment: Struct padding, Boundary alignment, Bit-fields" },
+      { number: "09", title: "Dynamic Memory Management: malloc, calloc, realloc, free, Memory leaks & Dangling pointers" },
+      { number: "11", title: "Linear Structures: Singly, Doubly, Circular Linked Lists, Stacks, Queues (Array vs Linked)" },
+      { number: "14", title: "Non-Linear Structures: Binary Trees, Traversal recursions, Searching & Sorting complexity" }
+    ]
+  },
+  {
     id: "ctci-cracking-the-coding-interview",
     title: "Cracking the Coding Interview (6th Edition)",
-    category: "Data Structures",
+    category: "Interview Prep (CTCI)",
     author: "Gayle Laakmann McDowell (CareerCup)",
     license: "Open Source Solutions (careercup/CtCI-6th-Edition-cpp)",
     url: "https://github.com/careercup/CtCI-6th-Edition-cpp",
@@ -463,6 +512,150 @@ bool hasTwoSumOptimized(const std::vector<int>& nums, int target) {
   }
   return false;
 }`
+  },
+
+  {
+    id: "clrs-loop-invariants-divide",
+    name: "CLRS Invariants, Master Theorem & Hoare Partitioning",
+    tagline: "Mathematical correctness proofs: Loop Invariants, Recurrence Bounds, and Lomuto vs Hoare Traps",
+    category: "CLRS & Algorithms",
+    difficulty: "Advanced",
+    bookReference: {
+      bookId: "clrs-introduction-to-algorithms",
+      bookTitle: "CLRS: Introduction to Algorithms (4th Edition)",
+      section: "Chapter 2: Getting Started (Loop Invariants) & Chapter 7: Quicksort",
+      url: "https://mitpress.mit.edu/9780262046305/introduction-to-algorithms/"
+    },
+    corePrinciples: [
+      "Loop Invariant Methodology: Three mandatory mathematical checkpoints: 1. Initialization (true prior to the first iteration), 2. Maintenance (if true before an iteration, remains true before the next), 3. Termination (at loop exit, gives a useful property proving algorithmic correctness).",
+      "The Master Method: For divide-and-conquer recurrences T(n) = aT(n/b) + f(n), compares f(n) with the watershed function n^(log_b a) to instantly determine asymptotic bounds.",
+      "Lomuto vs Hoare Partitioning: Lomuto's partition scheme does not halt on elements equal to the pivot, causing quadratic O(N^2) degradation on arrays of identical values. Hoare's two-pointer scheme stops at equal elements, maintaining balanced partitions.",
+      "Optimal Substructure & Overlapping Subproblems: The two indispensable criteria for Dynamic Programming over Greedy heuristics."
+    ],
+    antiPatternCode: `// ❌ LOMUTO PARTITION TRAP: Degrades to O(N^2) on identical keys!
+int lomutoPartition(std::vector<int>& arr, int low, int high) {
+  int pivot = arr[high];
+  int i = low - 1;
+  for (int j = low; j < high; ++j) {
+    // 💥 CRITICAL TRAP: Strictly less-than skips equal elements,
+    // causing an array like [5, 5, 5, 5, 5] to produce unbalanced (N-1, 0) splits!
+    if (arr[j] < pivot) {
+      ++i;
+      std::swap(arr[i], arr[j]);
+    }
+  }
+  std::swap(arr[i + 1], arr[high]);
+  return i + 1;
+}`,
+    idiomaticCode: `// ✅ CLRS HOARE PARTITIONING: Maintains O(N log N) on equal keys
+int hoarePartition(std::vector<int>& arr, int low, int high) {
+  int pivot = arr[low + (high - low) / 2]; // Midpoint pivot
+  int i = low - 1;
+  int j = high + 1;
+  while (true) {
+    do { ++i; } while (arr[i] < pivot); // Stops ONCE element >= pivot
+    do { --j; } while (arr[j] > pivot); // Stops ONCE element <= pivot
+    if (i >= j) return j;
+    std::swap(arr[i], arr[j]); // Balances equal elements evenly across both sides!
+  }
+}`
+  },
+
+  {
+    id: "cpds-pointer-memory-traps",
+    name: "CPDS Pointer Mechanics & Memory Alignment",
+    tagline: "Balagurusamy & Reema Thareja foundations: Pointer operator precedence, struct padding, and free() hygiene",
+    category: "CPDS (C & Data Structures)",
+    difficulty: "Core University",
+    bookReference: {
+      bookId: "cpds-balagurusamy-thareja",
+      bookTitle: "CPDS: C Programming & Data Structures",
+      section: "Chapter 5: Pointers & Address Arithmetic, Chapter 7: Structures",
+      url: "https://www.geeksforgeeks.org/c-programming-language/"
+    },
+    corePrinciples: [
+      "Operator Precedence in Pointer Arithmetic: Postfix '++' has higher precedence than unary dereference '*'. Therefore, *p++ fetches the value at *p and then increments the pointer address 'p'; it does NOT increment the value pointed to! (*p)++ is required to mutate the value.",
+      "Structure Memory Padding & Word Alignment: Compilers insert silent padding bytes into structs so that N-byte primitives align to addresses divisible by N. Ordering struct members from largest to smallest minimizes padding waste.",
+      "Heap Hygiene: Calling free(ptr) relinquishes the heap block but leaves 'ptr' pointing to the deallocated virtual address. Accessing it is a catastrophic Use-After-Free; immediately setting ptr = NULL prevents accidental reuse."
+    ],
+    antiPatternCode: `// ❌ CPDS PRECEDENCE TRAP & STRUCT PADDING WASTE
+struct BadStudent {
+  char grade;   // 1 byte + 3 bytes SILENT COMPILER PADDING!
+  int rollNo;   // 4 bytes
+  char section; // 1 byte + 7 bytes SILENT COMPILER PADDING!
+  double gpa;   // 8 bytes
+  // Total sizeof(BadStudent) = 24 bytes! (10 bytes wasted on padding)
+};
+
+void incrementScore(int* pScore) {
+  *pScore++; // 💥 BUG: Increments the pointer address, NOT the score value!
+}`,
+    idiomaticCode: `// ✅ CPDS MEMORY-OPTIMIZED ALIGNMENT & DEREFERENCE
+struct OptimizedStudent {
+  double gpa;   // 8 bytes (aligned to 8)
+  int rollNo;   // 4 bytes
+  char grade;   // 1 byte
+  char section; // 1 byte + 2 bytes padding to align to 8-byte boundary
+  // Total sizeof(OptimizedStudent) = 16 bytes! (Saved 33% memory footprint)
+};
+
+void incrementScore(int* pScore) {
+  (*pScore)++; // ✅ Correctly dereferences first, then increments pointed value!
+}`
+  },
+
+  {
+    id: "cp-contest-dsu-bit",
+    name: "CP3/CP4 & CPH: Disjoint Set Union & Fenwick Tree",
+    tagline: "Contest-grade data structures: O(alpha(N)) DSU and O(log N) Binary Indexed Trees (BIT)",
+    category: "Competitive Programming (CP3/CPH)",
+    difficulty: "Advanced Contest",
+    bookReference: {
+      bookId: "cp3-cp4-halim",
+      bookTitle: "Competitive Programming (CP3/CP4) by Steven & Felix Halim",
+      section: "Chapter 2: Data Structures with Built-in Libraries & Contest Specials",
+      url: "https://cpbook.net/"
+    },
+    corePrinciples: [
+      "Disjoint Set Union (DSU) Invariants: Naive union chains create O(N) linked lists. Combining Path Compression (flattening tree during find) with Union by Rank (attaching shallower tree under deeper root) crushes amortized query complexity down to O(alpha(N)), the inverse Ackermann function (<= 4 for N <= 10^80).",
+      "Fenwick Tree (Binary Indexed Tree): Uses two's complement bit trick (i & (-i)) to isolate the least significant set bit (LSB), updating and querying prefix sums in O(log N) time with zero extra pointer overhead (just an array of size N+1)."
+    ],
+    antiPatternCode: `// ❌ NAIVE UNION-FIND: Degrades to O(N) linear linked list
+struct NaiveDSU {
+  std::vector<int> parent;
+  NaiveDSU(int n) : parent(n) { for(int i=0; i<n; ++i) parent[i] = i; }
+  
+  int find(int i) {
+    // 💥 NO PATH COMPRESSION: Recursive tree walk is O(N)!
+    if (parent[i] == i) return i;
+    return find(parent[i]);
+  }
+  void unite(int i, int j) {
+    // 💥 NO UNION BY RANK: Blindly attaches parent[root_i] = root_j
+    parent[find(i)] = find(j);
+  }
+};`,
+    idiomaticCode: `// ✅ CONTEST-GRADE DSU (CP3 / CP4): O(alpha(N)) with Path Compression & Rank
+struct DSU {
+  std::vector<int> parent, rank;
+  DSU(int n) : parent(n), rank(n, 0) {
+    for (int i = 0; i < n; ++i) parent[i] = i;
+  }
+  int find(int i) {
+    // Path compression: Flattens the entire tree directly to the representative root!
+    if (parent[i] != i) parent[i] = find(parent[i]);
+    return parent[i];
+  }
+  bool unite(int i, int j) {
+    int root_i = find(i), root_j = find(j);
+    if (root_i == root_j) return false;
+    // Union by rank: Attach shorter tree under taller tree
+    if (rank[root_i] < rank[root_j]) std::swap(root_i, root_j);
+    parent[root_j] = root_i;
+    if (rank[root_i] == rank[root_j]) rank[root_i]++;
+    return true;
+  }
+};`
   }
 ];
 
@@ -755,6 +948,92 @@ Why is this bit-vector technique mathematically and hardware superior to \`std::
     aarDebrief: {
       mentalModelMistake: "Defaulting to high-level collections like std::unordered_set when the state space is small and bounded.",
       authoritativeTruth: "For small alphabets (<= 64 elements), an integer bitmask provides the fastest, zero-allocation O(1) set possible, fitting entirely in a CPU register without memory access penalties."
+    }
+  },
+
+  {
+    id: "clrs-q1-hoare-vs-lomuto",
+    conceptId: "clrs-loop-invariants-divide",
+    category: "CLRS & Algorithms",
+    title: "Quicksort Partitioning Invariant: Lomuto vs Hoare Degeneracy",
+    question: `Consider sorting an array of size $N = 100,000$ where every single element is identical (e.g. $[7, 7, 7, \\dots, 7]$).
+
+A developer tests two partitioning schemes: Lomuto Partitioning and Hoare Partitioning.
+
+Why does Lomuto's scheme degrade to disastrous $O(N^2)$ quadratic time with stack overflow risk, while Hoare's scheme runs smoothly in $O(N \\log N)$?`,
+    options: [
+      "Lomuto partitioning only works on floating point numbers, triggering floating point exceptions on integers",
+      "Lomuto uses a strict less-than comparison (arr[j] < pivot); because no element is strictly less than 7, index i never advances. The pivot is placed at the end every time, producing pathological (N-1, 0) splits. In contrast, Hoare's pointers stop on elements equal to pivot, swapping them across the center and forcing an optimal balanced split around N/2",
+      "Hoare partitioning uses multithreading internally to divide the work across CPU cores",
+      "Lomuto partitioning is an in-place algorithm while Hoare requires O(N) heap allocations"
+    ],
+    correctIndex: 1,
+    bookCitation: {
+      book: "CLRS: Introduction to Algorithms (4th Edition)",
+      rule: "Chapter 7: Quicksort — Section 7.1 vs Problem 7-1 (Hoare Partition)",
+      explanation: "In Lomuto's scheme, elements equal to pivot are all treated as greater-than-or-equal, putting all duplicates into a single partition. In Hoare's scheme, both indices stop when encountering an element equal to the pivot, causing equal elements to be exchanged across the midpoint and preserving balanced recursion subtrees."
+    },
+    aarDebrief: {
+      mentalModelMistake: "Assuming that simpler partitioning schemes like Lomuto are always equivalent in performance to two-pointer schemes.",
+      authoritativeTruth: "Lomuto's partition is easier to implement but fragile on duplicate inputs. Hoare's bidirectional scan stops on equal elements, which is the mathematically required invariant to prevent O(N^2) collapse on arrays with duplicate keys."
+    }
+  },
+
+  {
+    id: "cpds-q1-pointer-arithmetic",
+    conceptId: "cpds-pointer-memory-traps",
+    category: "CPDS (C & Data Structures)",
+    title: "CPDS Precedence Trap: *balance++ vs (*balance)++",
+    question: `A student writes the following C function in an engineering college lab exam (Anna University / JNTU curriculum) to credit interest into an account balance:
+
+\`\`\`c
+void addBonus(int *balance) {
+    *balance++;
+}
+\`\`\`
+
+What is the exact execution result according to ANSI C operator precedence, and what fatal bug occurs?`,
+    options: [
+      "The C compiler throws a compile-time syntax error because dereference and increment cannot be combined",
+      "Postfix '++' has higher precedence than unary dereference '*'. The expression evaluates as *(balance++): it dereferences the initial address, and then advances the pointer address 'balance' by sizeof(int) bytes. The balance integer value is NEVER modified, and 'balance' now points to unallocated stack memory!",
+      "The value pointed to by balance is incremented twice due to operator associativity",
+      "The operating system immediately aborts the process with SIGKILL"
+    ],
+    correctIndex: 1,
+    bookCitation: {
+      book: "CPDS: C Programming & Data Structures (Balagurusamy / Reema Thareja)",
+      rule: "Chapter 5: Pointers & Address Arithmetic — Operator Precedence",
+      explanation: "Postfix operators (++, --) bind tighter than unary prefix operators (*, &, -). Therefore *ptr++ increments the pointer variable itself, not the pointed value. To increment the actual value, parentheses are mandatory: (*ptr)++."
+    },
+    aarDebrief: {
+      mentalModelMistake: "Confusing pointer incrementation with pointed-value mutation due to ambiguous operator precedence.",
+      authoritativeTruth: "Always use explicit parentheses (*ptr)++ when mutating the value behind a pointer. Never rely on naked *ptr++ unless intentionally iterating through an array buffer in a loop."
+    }
+  },
+
+  {
+    id: "cp3-q1-dsu-ackermann",
+    conceptId: "cp-contest-dsu-bit",
+    category: "Competitive Programming (CP3/CPH)",
+    title: "Contest Invariant: Why DSU Achieves O(alpha(N)) Time",
+    question: `In competitive programming contests (ICPC / Codeforces / Steven Halim CP3/CP4), Disjoint Set Union (Union-Find) is used to track connected components and Kruskal's MST.
+
+If a contestant implements Path Compression without Union by Rank, what is the worst-case degradation, and why does combining BOTH techniques achieve near-constant $O(\\alpha(N))$ time?`,
+    options: [
+      "Path compression without rank causes a stack overflow because recursion depth exceeds 10,000",
+      "Without rank/size balancing, an adversary can create a degenerate linear chain of length N before queries compress it (O(N) per find). Combining Union by Rank (keeping tree heights logarithmic) with Path Compression guarantees that parent ranks strictly grow exponentially during traversals, bounding M operations to O(M alpha(N)), where alpha(N) <= 4 for all N <= 10^80",
+      "Union by rank enables multi-threading on modern GPU architectures",
+      "Path compression alone reduces complexity to O(1/N)"
+    ],
+    correctIndex: 1,
+    bookCitation: {
+      book: "Competitive Programming (CP3/CP4) by Steven & Felix Halim",
+      rule: "Chapter 2: Data Structures — Section 2.4.2 (Union-Find Disjoint Sets)",
+      explanation: "Path compression flattens trees during find(), but does not prevent deep trees from being constructed during union(). Union by Rank guarantees tree depth never exceeds O(log N). When combined, Tarjan proved that amortized cost per operation is O(alpha(N)), the inverse Ackermann function."
+    },
+    aarDebrief: {
+      mentalModelMistake: "Thinking path compression alone is sufficient to guarantee O(1) amortized performance in contest data structures.",
+      authoritativeTruth: "Both Path Compression AND Union by Rank are required to achieve the theoretical lower bound O(alpha(N)). Omitting rank balancing allows adversarial graphs to force O(N) chains."
     }
   }
 ];

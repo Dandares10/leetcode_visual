@@ -84,6 +84,24 @@ export function CppAarAgentModal({ isOpen, onClose, activeQuestion, activeConcep
           `1. **BUD Diagnosis**: The moment you have a brute-force $O(N^2)$ baseline, find what is dominating the time. If an inner loop repeatedly searches for a complementary value, caching it in a hash table or bitmask converts an $O(N)$ lookup into $O(1)$ amortized.\n` +
           `2. **The Runner Technique**: Fast/slow pointers eliminate $O(N)$ extra memory in linked lists. The mathematical offset congruence ($K = pC - M$) guarantees that resetting slow to head and stepping both at 1x collides precisely at the cycle entrance!\n` +
           `3. **Bit Vector Optimization**: For ASCII / alphabet problems, don't allocate heavy hash table nodes on the heap. A single 32-bit or 64-bit integer bitmask executes in single CPU cycles with zero memory overhead.`;
+      } else if (lower.includes("clrs") || lower.includes("cormen") || lower.includes("lomuto") || lower.includes("hoare") || lower.includes("master theorem") || lower.includes("loop invariant")) {
+        reply = `📖 **Book Reference: CLRS: Introduction to Algorithms (4th Ed, Cormen, Leiserson, Rivest, Stein)**\n\n` +
+          `*"Every correct algorithm is grounded in mathematical induction: Initialization, Maintenance, and Termination."*\n\n` +
+          `**AAR Key Insight**:\n` +
+          `1. **Hoare vs Lomuto Invariant**: Lomuto uses \`arr[j] < pivot\`, failing to stop on equal keys. When sorting duplicate elements, it places the pivot at the extreme end every round, causing $O(N^2)$ degradation. Hoare's two-pointer scan halts on equal elements, forcing swaps across the midpoint to ensure balanced $\\lfloor N/2 \\rfloor$ partitions.\n` +
+          `2. **The Master Method**: For recurrences $T(n) = aT(n/b) + f(n)$, compare $f(n)$ with $n^{\\log_b a}$. If $f(n)$ is polynomially smaller, $T(n) = \\Theta(n^{\\log_b a})$; if equal, $T(n) = \\Theta(n^{\\log_b a} \\log n)$.`;
+      } else if (lower.includes("cpds") || lower.includes("balagurusamy") || lower.includes("thareja") || lower.includes("forouzan") || lower.includes("*p++") || lower.includes("struct padding")) {
+        reply = `📖 **Book Reference: CPDS: C Programming & Data Structures (Balagurusamy / Reema Thareja)**\n\n` +
+          `*"In low-level C data structures, operator precedence and memory alignment dictate hardware reality."*\n\n` +
+          `**AAR Key Insight**:\n` +
+          `1. **Operator Precedence Trap**: Postfix \`++\` has higher precedence than unary \`*\`. \`*p++\` evaluates to \`*(p++)\`, which dereferences the current address and increments the pointer address, leaving the pointed value completely untouched! To increment the value, you must write \`(*p)++\`.\n` +
+          `2. **Struct Padding**: Compilers enforce word alignment by inserting invisible padding bytes between struct fields. Arranging members from largest type (double, long) to smallest (int, char) packs data efficiently and eliminates memory waste.`;
+      } else if (lower.includes("cp3") || lower.includes("cp4") || lower.includes("halim") || lower.includes("dsu") || lower.includes("fenwick") || lower.includes("union-find")) {
+        reply = `📖 **Book Reference: Competitive Programming (CP3/CP4, Steven & Felix Halim, Ch. 2)**\n\n` +
+          `*"Contest data structures must achieve near-constant theoretical lower bounds under adversarial tests."*\n\n` +
+          `**AAR Key Insight**:\n` +
+          `1. **DSU $\\alpha(N)$ Invariant**: Path Compression alone flattens trees during lookup, but adversarial inputs can construct deep trees during union. Combining **Union by Rank** with **Path Compression** guarantees tree depth is strictly logarithmic, proving that $M$ operations take $O(M \\alpha(N))$ time where $\\alpha(N) \\le 4$ for any input size.\n` +
+          `2. **Fenwick Tree (BIT)**: Isolating the lowest set bit with \`x & (-x)\` allows updating and querying prefix sums in $O(\\log N)$ time with a simple 1-indexed array and zero pointer indirection overhead.`;
       } else {
         reply = `📖 **Authoritative Analysis (${currentBook.title})**:\n\n` +
           `In modern C++, Data Structures, and CPDC (Concurrent/Distributed Systems), avoiding rote memorization requires understanding invariants and mathematical models. As documented in ${currentBook.title}, every core structure or synchronization primitive exists to enforce safety and algorithmic efficiency without undefined behavior. Ask me about any specific chapter or scenario!`;

@@ -371,7 +371,7 @@ export function CppMasteryWorkspace({ userXp, onGainXp }) {
           
           {/* Book Categories Filter */}
           <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-            {['All', 'Modern C++', 'Data Structures', 'CPDC & Concurrency', 'Distributed Systems'].map(cat => (
+            {['All', 'CLRS & Algorithms', 'CPDS (C & Data Structures)', 'Competitive Programming (CP3/CPH)', 'Interview Prep (CTCI)', 'Modern C++', 'CPDC & Concurrency', 'Distributed Systems'].map(cat => (
               <button
                 key={cat}
                 onClick={() => setBookCategoryFilter(cat)}
